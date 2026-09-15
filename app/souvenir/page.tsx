@@ -1,15 +1,34 @@
 
 "use client";
 
-import { useState } from "react";
-import { artists } from "../data/artists";
+import { useEffect, useState } from "react";
+import { createClient } from "../../lib/supabase/client";
 import ArtistSelector from "../components/ArtistSelector";
 
 export default function SouvenirPage() {
+  const [artists, setArtists] = useState<any[]>([]);
     //This state collects all the selected artists. It's an array of artist IDs.
-      const [selectedArtists, setSelectedArtists] = useState<number[]>([]);
+      const [selectedArtists, setSelectedArtists] = useState<string[]>([]);
+
+    useEffect(() => {
+  async function getArtists() {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("artists")
+      .select("*");
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+console.log(data)
+    setArtists(data);
+  }
+
+  getArtists();
+}, []);
 // This function toggles an artist's selection. If the artist is already selected, it removes them from the array. If not, it adds them.
-       function toggleArtist(id: number) {
+       function toggleArtist(id: string) {
     if (selectedArtists.includes(id)) {
       setSelectedArtists(
         selectedArtists.filter((artistId) => artistId !== id)
@@ -24,6 +43,8 @@ export default function SouvenirPage() {
       <p>Your collected exhibition data will eventually appear here.</p>
      {artists.map((artist) => (
          <div key={artist.id}>
+
+  <p>Artists loaded: {artists.length}</p>
           <ArtistSelector
             name={artist.name}
             selected={selectedArtists.includes(artist.id)}
@@ -32,7 +53,13 @@ export default function SouvenirPage() {
           />
         </div>
       ))}
-            <p>Selected artists: {selectedArtists.length}</p>
+      {artists
+        .filter((artist) => selectedArtists.includes(artist.id))
+        .map((artist) => (
+          <div key={artist.id}>
+            <p>{artist.name}</p>
+          </div>
+        ))}
     </main>
   );
 }
