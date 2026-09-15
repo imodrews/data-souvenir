@@ -4,9 +4,10 @@
 import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 import ArtistSelector from "../components/ArtistSelector";
+import type { Artist } from "../../types/artist";
 
 export default function SouvenirPage() {
-  const [artists, setArtists] = useState<any[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
     //This state collects all the selected artists. It's an array of artist IDs.
       const [selectedArtists, setSelectedArtists] = useState<string[]>([]);
 
