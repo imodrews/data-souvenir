@@ -1,3 +1,4 @@
+import type { Artwork } from "./artwork";
 export type Artist = {
   id: string;
   name: string;
@@ -7,4 +8,5 @@ export type Artist = {
   image_url: string | null;
   bio_de: string | null;
   bio_eng: string | null;
+  artworks: Artwork[];
 };
