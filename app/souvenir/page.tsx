@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 import ArtistSelector from "../components/ArtistSelector";
 import type { Artist } from "../../types/artist";
+import FloorPlan from "../components/FloorPlan";
 
 export default function SouvenirPage() {
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -113,11 +114,11 @@ const selectedArtworkData = selectedArtworks
   ))}
 </svg> */}
 <svg
-  width="400"
-  height="400"
-  style={{ border: "1px solid black" }}
+  viewBox="0 0 1015 476"
+  width="100%"
   preserveAspectRatio="xMidYMid meet"
 >
+   <FloorPlan />
   <defs>
     <radialGradient id="fuzzyDot">
       <stop offset="0%" stopColor="#25365c" stopOpacity="0.9" />
@@ -161,7 +162,7 @@ const selectedArtworkData = selectedArtworks
       fill="url(#fuzzyDot)"
        filter="url(#blur)"
     />
-     <text
+     {/* <text
       x={artwork.x ?? 0}
       y={artwork.y ?? 0}
       textAnchor="middle"
@@ -169,7 +170,7 @@ const selectedArtworkData = selectedArtworks
       fill="#060606"
     >
       {artwork.title}
-    </text>
+    </text> */}
       </g>
   ))}
     
