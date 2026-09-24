@@ -47,3 +47,43 @@ a {
     color-scheme: light;
   }
 }
+
+@keyframes drawPath {
+  from {
+    stroke-dashoffset: 1;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.path-haze {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawPath 1.5s ease-out forwards;
+}
+
+.path-trace {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawPath 1.2s ease-out 0.25s forwards;
+}
+
+@keyframes bloomDot {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.artwork-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bloomDot 0.8s ease-out 1.1s both;
+}

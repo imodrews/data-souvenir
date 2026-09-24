@@ -3,15 +3,16 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
-import ArtistSelector from "../components/ArtistSelector";
+
 import type { Artist } from "../../types/artist";
+import type { Artwork } from "../../types/artwork";
 import FloorPlan from "../components/FloorPlan";
+import { getSessionId } from "../../lib/session";
 
 export default function SouvenirPage() {
   const [artists, setArtists] = useState<Artist[]>([]);
     //This state collects all the selected artists. It's an array of artist IDs.
-      const [selectedArtists, setSelectedArtists] = useState<string[]>([]);
-      const [selectedArtworks, setSelectedArtworks] = useState<string[]>([]);
+      const [scannedArtworks, setScannedArtworks] = useState<Artwork[]>([]);
 
     useEffect(() => {
   async function getArtists() {
@@ -33,74 +34,78 @@ console.log("Supabase data:", data);
 
   getArtists();
 }, []);
-// This function toggles an artist's selection. If the artist is already selected, it removes them from the array. If not, it adds them.
-       function toggleArtist(id: string) {
-    if (selectedArtists.includes(id)) {
-      setSelectedArtists(
-        selectedArtists.filter((artistId) =>  artistId !== id)
-      );
-    } else {
-      
-      setSelectedArtists([...selectedArtists, id]);
-    }
-  }
-  function toggleArtwork(id: string) {
-  if (selectedArtworks.includes(id)) {
-    setSelectedArtworks(
-      selectedArtworks.filter((artworkId) => artworkId !== id)
-    );
-  } else {
-    setSelectedArtworks([...selectedArtworks, id]);
-  }
-}
 
-const selectedArtworkData = selectedArtworks
-  .map((id) =>
-    artists
-      .flatMap((artist) => artist.artworks)
-      .find((artwork) => artwork.id === id)
-  )
-  .filter((artwork) => artwork !== undefined);
+useEffect(() => {
+   const supabase = createClient();
+  const sessionId = getSessionId();
+
+  async function getScans() {
+
+    const { data, error } = await supabase
+    
+      .from("scans")
+      .select(`
+        id,
+        scanned_at,
+         artwork_id,
+        artwork:artworks (
+          *
+        )
+      `)
+      .eq("session_id", sessionId)
+      .order("scanned_at", { ascending: true });
+
+    if (error) {
+      console.error("Error loading scans:", error);
+      return;
+    }
+
+    console.log("My scans:", data);
+   const artworksFromScans = data
+  .map((scan) => scan.artwork)
+  .filter(Boolean)
+  .flat() as Artwork[];
+  console.log("Artworks from scans:", artworksFromScans);
+
+setScannedArtworks(artworksFromScans);
+  }
+
+  getScans();
+    // Listen for new scans
+  const channel = supabase
+    .channel(`scans-${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "scans",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      () => {
+        console.log("New scan detected!");
+        getScans();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+
+
+
+const selectedArtworkData = scannedArtworks;
   console.log("Selected artwork data:", selectedArtworkData);
   return (
     <main>
       <h1>Your Souvenir</h1>
-      <p>Your collected exhibition data will eventually appear here.</p>
-        <p>Artists loaded: {artists.length}</p>
-     {artists.map((artist) => (
-         <div key={artist.id}>
+  
 
-
-          <ArtistSelector
-            name={artist.name}
-            selected={selectedArtists.includes(artist.id)}
-            //this passes this toggle on to the child (ArtistSelector) component, so it can call it when the user clicks the button.
-            onToggle={() => toggleArtist(artist.id)}
-          />
-        </div>
-      ))}
-      {artists
-        .filter((artist) => selectedArtists.includes(artist.id))
-        .map((artist) => (
-          <div key={artist.id}>
-            <p>{artist.name}</p>
-          </div>
-        ))}
-        {artists
-          .filter((artist) => selectedArtists.includes(artist.id))
-          .flatMap((artist) => artist.artworks)
-          .map((artwork) => (
-  <button
-    key={artwork.id}
-    onClick={() => toggleArtwork(artwork.id)}
-  >
-    {artwork.title}
-    {selectedArtworks.includes(artwork.id) ? " ✓" : ""}
-  </button>
-))}
 <h2>Your path</h2>
 
-// I will use this later when testing how well things work:
 
 {/* <svg width="400" height="400">
   {selectedArtworkData.map((artwork, index) => (
@@ -114,7 +119,7 @@ const selectedArtworkData = selectedArtworks
   ))}
 </svg> */}
 <svg
-  viewBox="0 0 1015 476"
+  viewBox="0 0 694 231"
   width="100%"
   preserveAspectRatio="xMidYMid meet"
 >
@@ -130,30 +135,77 @@ const selectedArtworkData = selectedArtworks
     <feGaussianBlur stdDeviation="12" />
   </filter>
     <filter id="slight_blur">
-    <feGaussianBlur stdDeviation="5" />
+    <feGaussianBlur stdDeviation="3" />
   </filter>
   </defs>
  
 
-    {selectedArtworkData.slice(1).map((artwork, index) => {
-    const previousArtwork = selectedArtworkData[index];
+{selectedArtworkData.slice(1).map((artwork, index) => {
+  const previousArtwork = selectedArtworkData[index];
 
-    return (
-      <line
-        key={`${previousArtwork.id}-${artwork.id}`}
-        x1={previousArtwork.x ?? 0}
-        y1={previousArtwork.y ?? 0}
-        x2={artwork.x ?? 0}
-        y2={artwork.y ?? 0}
-        stroke="black"
-        strokeWidth="2"
-         filter="url(#slight_blur)"
-      />
-    );
-  })}
+  // Get the coordinates of the two artworks
+  const x1 = previousArtwork.x ?? 0;
+  const y1 = previousArtwork.y ?? 0;
+  const x2 = artwork.x ?? 0;
+  const y2 = artwork.y ?? 0;
 
-  {selectedArtworkData.map((artwork) => (
-     <g key={artwork.id}>
+  // Calculate the horizontal and vertical distance
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  // Calculate the total distance between the two points
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // If both artworks are at the same position,
+  // there is no path to draw
+  if (distance === 0) {
+    return null;
+  }
+
+  // Find the midpoint between the two artworks
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+
+  // Longer distances create larger curves
+  const curveAmount = distance * 0.15;
+
+  // Move the control point perpendicular to the
+  // straight line between the two artworks
+  const controlX = midX - (dy / distance) * curveAmount;
+  const controlY = midY + (dx / distance) * curveAmount;
+
+  return (
+   <g key={`${previousArtwork.id}-${artwork.id}-${index}`}>
+
+    {/* Soft haze moves first */}
+    <path
+      d={`M ${x1} ${y1} Q ${controlX} ${controlY} ${x2} ${y2}`}
+      fill="none"
+      stroke="#59647a"
+      strokeWidth="12"
+      strokeOpacity="0.12"
+      filter="url(#slight_blur)"
+      pathLength="1"
+      className="path-haze"
+    />
+
+    {/* Fine trace follows */}
+    <path
+      d={`M ${x1} ${y1} Q ${controlX} ${controlY} ${x2} ${y2}`}
+      fill="none"
+      stroke="#59647a"
+      strokeWidth="1.5"
+      strokeOpacity="0.3"
+      pathLength="1"
+      className="path-trace"
+    />
+
+  </g>
+  );
+})}
+
+  {selectedArtworkData.map((artwork, index) => (
+     <g key={`${artwork.id}-${index}`}>
     <circle
       key={artwork.id}
       cx={artwork.x ?? 0}
@@ -161,6 +213,7 @@ const selectedArtworkData = selectedArtworks
       r="60"
       fill="url(#fuzzyDot)"
        filter="url(#blur)"
+       className="artwork-dot"
     />
      {/* <text
       x={artwork.x ?? 0}
