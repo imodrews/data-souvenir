@@ -19,6 +19,7 @@ import type {
 } from "../../../types/artwork";
 
 import AnimatedMark from "../../components/AnimatedMark";
+import gsap from "gsap";
 
 
 // =====================================================
@@ -132,6 +133,11 @@ export default function D3TestPage() {
   const [pulseIndex, setPulseIndex] =
     useState<number | null>(0);
 
+  const [selectedArtworkId, setSelectedArtworkId] =
+  useState<string | null>(null);
+
+  const [zoomProgress, setZoomProgress] = useState(0);
+
 
 // ===================================================
 // LOAD THIS VISITOR'S JOURNEY
@@ -226,6 +232,24 @@ setStage("journey");
   getJourney();
 
 }, [sessionId]);
+
+useEffect(() => {
+  if (!selectedArtworkId) return;
+
+  const animation = { progress: 0 };
+
+  const tween = gsap.to(animation, {
+    progress: 1,
+    duration: 1.5,
+    ease: "power3.inOut",
+
+    onUpdate: () => {
+      setZoomProgress(animation.progress);
+    },
+  });
+
+  return () => {tween.kill();};
+}, [selectedArtworkId]);
 
 
   // ===================================================
@@ -632,12 +656,32 @@ setStage("journey");
 
   }, [stage]);
 
+  function exitZoom() {
+  const animation = { progress: zoomProgress };
+
+  gsap.to(animation, {
+    progress: 0,
+    duration: 1.2,
+    ease: "power3.inOut",
+
+    onUpdate: () => {
+      setZoomProgress(animation.progress);
+    },
+
+    onComplete: () => {
+      setSelectedArtworkId(null);
+    },
+  });
+}
+
 
   // ===================================================
   // REPLAY
   // ===================================================
 
   function replay() {
+      setSelectedArtworkId(null);
+  setZoomProgress(0);
 
     setCurrentSegment(0);
 
@@ -734,13 +778,18 @@ setStage("journey");
       </button>
 
 
+
+
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         width="100%"
         style={{
           maxWidth: "900px",
-          background: "#f7f6f2",
+          background: "#000000",
         }}
+        onClick={() => {
+    if (selectedArtworkId) exitZoom();
+  }}
       >
         <defs>
     <filter
@@ -767,11 +816,7 @@ setStage("journey");
       />
     </filter>
   </defs>
-<AnimatedMark
-  x={350}
-  y={200}
-  size={120}
-/>
+
 
         {/* =================================
             COMPLETED JOURNEY SEGMENTS
@@ -949,6 +994,38 @@ setStage("journey");
               stage === "journey" &&
               index === pulseIndex;
 
+            const isSelected =
+  selectedArtworkId === artwork.id;
+              
+              const hasSelection =
+  selectedArtworkId !== null;
+
+const journeySize = 55;
+const constellationSize = packed.r * 2;
+
+const normalSize = d3.interpolateNumber(
+  journeySize,
+  constellationSize
+)(packProgress);
+const displayX = isSelected
+  ? d3.interpolateNumber(x, WIDTH / 2)(zoomProgress)
+  : x;
+
+const displayY = isSelected
+  ? d3.interpolateNumber(y, HEIGHT / 2)(zoomProgress)
+  : y;
+
+const displaySize = isSelected
+  ? d3.interpolateNumber(
+      normalSize,
+      Math.max(WIDTH, HEIGHT) * 2
+    )(zoomProgress)
+  : normalSize;
+
+const markOpacity =
+  selectedArtworkId === null || isSelected
+    ? 1
+    : 1 - zoomProgress;
 
             return (
 
@@ -956,7 +1033,7 @@ setStage("journey");
                 key={artwork.id}
               >
 
-                {/* PULSE */}
+                {/* PULSE
 
                 {pulsing && (
 
@@ -971,23 +1048,30 @@ setStage("journey");
                     opacity={0.25}
                   />
 
-                )}
+                )} */}
 
 
                 {/* MAIN DOT */}
 
-               {activated && (
+       {activated && (
+  <g
+  onClick={(event) => {
+  event.stopPropagation();
 
-  <circle
-    cx={x}
-    cy={y}
-    r={radius}
-
-       fill={artworkColor}
-
-  filter="url(#organicBlob)"
-  />
-
+  if (selectedArtworkId) {
+    exitZoom();
+  } else {
+    setSelectedArtworkId(artwork.id);
+  }
+}}
+    style={{ cursor: "pointer" }}
+  >
+    <AnimatedMark
+      x={displayX}
+      y={displayY}
+      size={displaySize}
+    />
+  </g>
 )}
 
 
@@ -1031,7 +1115,7 @@ setStage("journey");
             OUTER PACKED CIRCLE
         ================================= */}
 
-        {packProgress > 0 && (
+        {/* {packProgress > 0 && (
 
           <circle
             cx={
@@ -1057,7 +1141,7 @@ setStage("journey");
             }
           />
 
-        )}
+        )} */}
 
       </svg>
 

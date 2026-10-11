@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+
 type AnimatedMarkProps = {
   x: number;
   y: number;
@@ -21,6 +22,7 @@ export default function AnimatedMark({
   size = 80,
 }: AnimatedMarkProps) {
   const [frame, setFrame] = useState(0);
+  const [isPulsing, setIsPulsing] = useState(false);
 
   useEffect(() => {
     if (frame >= frames.length - 1) {
@@ -35,6 +37,22 @@ export default function AnimatedMark({
   }, [frame]);
 
   return (
+  <g
+    onClick={() => {
+      setIsPulsing(true);
+
+      window.setTimeout(() => {
+        setIsPulsing(false);
+      }, 500);
+    }}
+    style={{
+      cursor: "pointer",
+      transformBox: "fill-box",
+      transformOrigin: "center",
+      transform: isPulsing ? "scale(1.25)" : "scale(1)",
+      transition: "transform 500ms ease-out",
+    }}
+  >
     <image
       href={frames[frame]}
       x={x - size / 2}
@@ -42,5 +60,6 @@ export default function AnimatedMark({
       width={size}
       height={size}
     />
-  );
+  </g>
+);
 }

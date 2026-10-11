@@ -1,0 +1,68 @@
+{
+  "name": "Tomorrow's Ghosts",
+  "children": [
+    {
+      "name": "green",
+      "children": [
+        {
+          "name": "Lisa Mazenauer",
+          "children": [
+            { "name": "The Right to Forget", "year": "2025", "value": 1 }
+          ]
+        },
+        {
+          "name": "Teresa Fischer",
+          "children": [
+            { "name": "Nobody Wants to Leave Here", "year": "2024", "value": 1 }
+          ]
+        },
+        {
+          "name": "Anastasiia Batishcheva",
+          "children": [
+            { "name": "Träume einer Menschheitsgeschichte", "year": "2026", "value": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "red",
+      "children": [
+        {
+          "name": "Nora Handsley",
+          "children": [
+            { "name": "Good Luck Around Every Turn", "year": "2023–2026", "value": 1 }
+          ]
+        },
+        {
+          "name": "Vincent Völker",
+          "children": [
+            { "name": "Zugang. Struktur. Haltung", "year": "2026", "value": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "purple",
+      "children": [
+        {
+          "name": "Cedric Zellweger",
+          "children": [
+            { "name": "If life is a video game, the graphics are great, but the plot is confusing & the tutorial is way too long", "year": "2025–2026", "value": 1 }
+          ]
+        },
+        {
+          "name": "Pavle Nikolić",
+          "children": [
+            { "name": "False Friends", "year": "2022–2025", "value": 1 }
+          ]
+        },
+        {
+          "name": "Mai Do",
+          "children": [
+            { "name": "Every Weekend, Our Attic Becomes Vietnam", "year": "2026", "value": 1 }
+          ]
+        }
+      ]
+    }
+  ]
+}
