@@ -5,12 +5,13 @@ import { useParams } from "next/navigation";
 import * as d3 from "d3";
 import gsap from "gsap";
 import { createClient } from "../../../lib/supabase/client";
-import FloorPlanSvg from "../../components/FloorPlan";
+import FloorPlan from "../../components/FloorPlan";
 
 // Standalone prototype. Does not modify /d3-test/[id].
 // Replace the simplified floor plan below with your traced SVG later.
 const WIDTH = 694;
-const HEIGHT = 400;
+const HEIGHT = 900;
+const JOURNEY_LAYOUT_MARGIN = 30;
 
 const WHITE_CIRCLE_SCALE = 1.6;
 const WHITE_CIRCLE_Y_OFFSET = 15;
@@ -18,10 +19,11 @@ const WHITE_CIRCLE_Y_OFFSET = 15;
 
 // Each artwork grows through three PNG frames once during the journey.
 const MARK_FRAMES: Record<Group, readonly string[]> = {
-  red: ["/marks/red/2/01.png", "/marks/red/2/02.png", "/marks/red/2/03.png"],
-  green: ["/marks/green/2/01.png", "/marks/green/2/02.png", "/marks/green/2/03.png"],
-  purple: ["/marks/purple/2/01.png", "/marks/purple/2/02.png", "/marks/purple/2/03.png"],
+  red: ["/marks/blue-dot.png", "/marks/blue-dot.png", "/marks/blue-dot.png"],
+  green: ["/marks/blue-dot.png", "/marks/blue-dot.png", "/marks/blue-dot.png"],
+  purple: ["/marks/blue-dot.png", "/marks/blue-dot.png", "/marks/blue-dot.png"],
 };
+const MARK_REVEAL_START = 0.10;
 
 function markFrame(group: Group, index: number, progress: number, stage: string): string {
   const frames = MARK_FRAMES[group];
@@ -30,9 +32,9 @@ function markFrame(group: Group, index: number, progress: number, stage: string)
   }
 
   const encounterProgress = Math.max(0, Math.min(1, progress - index));
-  if (encounterProgress < 0.72) return frames[0];
+  if (encounterProgress < MARK_REVEAL_START) return frames[0];
 
-  const animationProgress = (encounterProgress - 0.72) / 0.28;
+  const animationProgress = (encounterProgress - MARK_REVEAL_START) / (1 - MARK_REVEAL_START);
   const frameIndex = Math.min(
     frames.length - 1,
     1 + Math.floor(animationProgress * (frames.length - 1)),
@@ -49,20 +51,29 @@ type JourneyItem = {
   group: Group;
   x: number;
   y: number;
+  encounterIndexes: number[];
 };
-type PositionedItem = JourneyItem & { targetX: number; targetY: number; radius: number };
-type PackDatum = { children?: PackDatum[]; item?: JourneyItem; value?: number };
+type PositionedItem = JourneyItem;
+
+function getJourneyMarkSize(itemCount: number): number {
+  return Math.max(110, Math.min(280, 420 / Math.sqrt(itemCount || 1)));
+}
 
 // These anchors are artistic placeholders, not surveyed floor-plan coordinates.
 const ANCHORS: Record<Group, { x: number; y: number; radius: number }> = {
-  purple: { x: 112, y: 210, radius: 82 }, // top floor, flattened to the left
-  red: { x: 292, y: 210, radius: 83 },
-  green: { x: 492, y: 210, radius: 100 },
+  green: { x: 347, y: 180, radius: 82 },
+  red: { x: 347, y: 450, radius: 83 },
+  purple: { x: 347, y: 720, radius: 100 },
 };
 const COLORS: Record<Group, string> = {
   red: "#b85c5c",
   green: "#5f8f68",
   purple: "#8064a2",
+};
+const GROUP_LABELS: Record<Group, string> = {
+  red: "Sichtbarkeit des Ungesehenen, »Nicht-Präsenz«",
+  green: "Erinnerungskultur, Trauma und verdrängteGeschichte(n)",
+  purple: "Realität oder Simulation –das Spiel mit der Wahrnehmung, Passagen Möglichen",
 };
 
 function normalizeGroup(value: string | null | undefined): Group {
@@ -72,13 +83,27 @@ function normalizeGroup(value: string | null | undefined): Group {
     : "red";
 }
 
-function FloorPlan() {
- return (
-    <g transform="translate(0 85)">
-  <FloorPlanSvg  />
-</g>
-  );
-}
+// function FloorPlan() {
+//   return (
+//     <g transform="translate(0 85)">
+//       <defs>
+//         <clipPath id="blueprint-floorplan-clip">
+//           <rect x={0} y={0} width={WIDTH} height={231} />
+//         </clipPath>
+//       </defs>
+//       <image
+//         href="/blueprint-5.png"
+//         x={-43}
+//         y={-42}
+//         width={781}
+//         height={315}
+//         preserveAspectRatio="none"
+//         clipPath="url(#blueprint-floorplan-clip)"
+//         pointerEvents="none"
+//       />
+//     </g>
+//   );
+// }
 
 export default function FloorTestPage() {
   const params = useParams<{ id: string }>();
@@ -86,10 +111,11 @@ export default function FloorTestPage() {
   const [items, setItems] = useState<JourneyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<"journey" | "packing" | "packed">("journey");
+  const [stage, setStage] = useState<"journey" | "labels" | "complete">("journey");
   const [journeyProgress, setJourneyProgress] = useState(0);
-  const [packProgress, setPackProgress] = useState(0);
+  const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [zoomProgress, setZoomProgress] = useState(0);
   const [replayKey, setReplayKey] = useState(0);
   const zoomTween = useRef<gsap.core.Tween | null>(null);
@@ -112,6 +138,7 @@ export default function FloorTestPage() {
         setItems([]);
       } else {
         // Supabase nested relation types vary by generated schema. Normalize here.
+        let encounterIndex = 0;
         const normalized = (data ?? []).flatMap((raw) => {
           const scan = raw as unknown as {
             id: string | number;
@@ -124,6 +151,8 @@ export default function FloorTestPage() {
           const artwork = Array.isArray(scan.artwork) ? scan.artwork[0] : scan.artwork;
           if (!artwork || artwork.x == null || artwork.y == null) return [];
           const artist = Array.isArray(artwork.artist) ? artwork.artist[0] : artwork.artist;
+          const currentEncounterIndex = encounterIndex;
+          encounterIndex += 1;
           return [{
             scanId: String(scan.id),
             artworkId: artwork.id,
@@ -132,10 +161,20 @@ export default function FloorTestPage() {
             group: normalizeGroup(artist?.curatorial_group),
             x: Number(artwork.x),
             // Your original journey uses a 694 × 231 floor-plan coordinate space.
-            y: 105 + (Number(artwork.y) / 231) * 190,
+            y: 65 + (Number(artwork.y) / 231) * (HEIGHT - 130),
+            encounterIndexes: [currentEncounterIndex],
           } satisfies JourneyItem];
         });
-        setItems(normalized);
+        const uniqueArtworks = new Map<string, JourneyItem>();
+        for (const item of normalized) {
+          const existing = uniqueArtworks.get(item.artworkId);
+          if (existing) {
+            existing.encounterIndexes.push(...item.encounterIndexes);
+          } else {
+            uniqueArtworks.set(item.artworkId, item);
+          }
+        }
+        setItems([...uniqueArtworks.values()]);
       }
       setLoading(false);
     }
@@ -143,68 +182,118 @@ export default function FloorTestPage() {
     return () => { cancelled = true; };
   }, [sessionId]);
 
+  const encounterCount = items.reduce(
+    (count, item) => count + item.encounterIndexes.length,
+    0
+  );
+  const journeyMarkSize = getJourneyMarkSize(items.length);
+
   // Pack each curatorial group separately, then position it on the flattened plan.
   const positioned = useMemo<PositionedItem[]>(() => {
-    const byId = new Map<string, PositionedItem>();
-    for (const group of ["purple", "red", "green"] as const) {
-      const members = items.filter((item) => item.group === group);
-      if (!members.length) continue;
-      const anchor = ANCHORS[group];
-      const diameter = anchor.radius * 2;
-      const packData: PackDatum = { children: members.map((item) => ({ item, value: 1 })) };
-      const hierarchy = d3.hierarchy<PackDatum>(packData).sum((d) => d.value ?? 0);
-      const packed = d3.pack<PackDatum>().size([diameter, diameter]).padding(7)(hierarchy);
-      for (const leaf of packed.leaves()) {
-        const item = leaf.data.item;
-        if (!item) continue;
-        byId.set(item.scanId, {
-          ...item,
-          targetX: anchor.x - anchor.radius + leaf.x,
-          targetY: anchor.y - anchor.radius + leaf.y,
-          radius: Math.max(8, leaf.r),
-        });
+    const dataMinX = Math.min(...items.map((item) => item.x));
+    const dataMaxX = Math.max(...items.map((item) => item.x));
+    const dataMinY = Math.min(...items.map((item) => item.y));
+    const dataMaxY = Math.max(...items.map((item) => item.y));
+    const marginX = Math.max(JOURNEY_LAYOUT_MARGIN, journeyMarkSize / 2 + 12);
+    const marginY = Math.max(JOURNEY_LAYOUT_MARGIN, journeyMarkSize / 2 + 12);
+    const fitCoordinate = (value: number, min: number, max: number, extent: number, margin: number) => {
+      if (max <= min) return extent / 2;
+      const fittedSpan = (extent - margin * 2) * 0.9;
+      const fittedMargin = (extent - fittedSpan) / 2;
+      return fittedMargin + ((value - min) / (max - min)) * fittedSpan;
+    };
+    const purpleXCoordinates = items
+      .filter((item) => item.group === "purple")
+      .map((item) => fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH, marginX));
+    const purpleOffsetX = purpleXCoordinates.length
+      ? WIDTH / 2 - (Math.min(...purpleXCoordinates) + Math.max(...purpleXCoordinates)) / 2
+      : 0;
+
+    const journeyItems = items.map((item) => ({
+      ...item,
+      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH, marginX) + (item.group === "purple" ? purpleOffsetX : 0),
+      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT, marginY) + (item.group === "purple" ? 55 : 0),
+    }));
+
+    const minCenterDistance = journeyMarkSize * 0.82 + 8;
+    const visibleHalfSize = journeyMarkSize * 0.82 / 2;
+    const minX = visibleHalfSize + 8;
+    const maxX = WIDTH - minX;
+    const minY = visibleHalfSize + 8;
+    const maxY = HEIGHT - minY;
+
+    // Move only overlapping journey marks; leave already-separated coordinates alone.
+    for (let pass = 0; pass < 60; pass += 1) {
+      let moved = false;
+      for (let firstIndex = 0; firstIndex < journeyItems.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < journeyItems.length; secondIndex += 1) {
+          const first = journeyItems[firstIndex];
+          const second = journeyItems[secondIndex];
+          let dx = second.x - first.x;
+          let dy = second.y - first.y;
+          let distance = Math.hypot(dx, dy);
+          if (distance >= minCenterDistance) continue;
+
+          if (distance < 0.001) {
+            const angle = ((firstIndex + secondIndex) % 8) * (Math.PI / 4);
+            dx = Math.cos(angle);
+            dy = Math.sin(angle);
+            distance = 1;
+          }
+
+          const push = (minCenterDistance - distance) / 2;
+          first.x -= (dx / distance) * push;
+          first.y -= (dy / distance) * push;
+          second.x += (dx / distance) * push;
+          second.y += (dy / distance) * push;
+          moved = true;
+        }
       }
+
+      journeyItems.forEach((item) => {
+        item.x = Math.max(minX, Math.min(maxX, item.x));
+        item.y = Math.max(minY, Math.min(maxY, item.y));
+      });
+      if (!moved) break;
     }
-    return items.flatMap((item) => {
-      const found = byId.get(item.scanId);
-      return found ? [found] : [];
-    });
-  }, [items]);
+
+    return journeyItems;
+  }, [items, journeyMarkSize]);
 
   useEffect(() => {
     if (!positioned.length) return;
     setStage("journey");
     setJourneyProgress(0);
-    setPackProgress(0);
+    setLabelsProgress(0);
     setSelected(null);
     setZoomProgress(0);
     zoomValue.current.value = 0;
     zoomTween.current?.kill();
 
-    const values = { journey: 0, packing: 0 };
+    const values = { journey: 0, labels: 0 };
     const timeline = gsap.timeline();
     timeline.to(values, {
-      journey: positioned.length,
-      duration: Math.max(1.2, positioned.length * 0.8),
+      journey: encounterCount,
+      duration: Math.max(1.2, encounterCount * 1.0),
       ease: "none",
       onUpdate: () => setJourneyProgress(values.journey),
     });
     timeline.to({}, { duration: 0.6 });
-    timeline.call(() => setStage("packing"));
+    timeline.call(() => setStage("labels"));
     timeline.to(values, {
-      packing: 1,
-      duration: 2.3,
-      ease: "power2.inOut",
-      onUpdate: () => setPackProgress(values.packing),
+      labels: 1,
+      duration: 0.8,
+      ease: "back.out(1.4)",
+      onUpdate: () => setLabelsProgress(values.labels),
     });
-    timeline.call(() => setStage("packed"));
+    timeline.call(() => setStage("complete"));
     return () => { timeline.kill(); };
-  }, [positioned, replayKey]);
+  }, [positioned, encounterCount, replayKey]);
 
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
   function enterOrExit(scanId: string) {
-    if (stage !== "packed") return;
+    if (stage !== "complete") return;
     zoomTween.current?.kill();
     if (selected === scanId) {
       zoomTween.current = gsap.to(zoomValue.current, {
@@ -225,15 +314,30 @@ export default function FloorTestPage() {
     if (selected) enterOrExit(selected);
   }
 
-  const path = d3.line<[number, number]>().x((d) => d[0]).y((d) => d[1])
-    .curve(d3.curveBumpX)(positioned.map((item) => [item.x, item.y]));
+  const encounterSequence = positioned
+    .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
+    .sort((first, second) => first.encounterIndex - second.encounterIndex);
+  const entranceSegment = encounterSequence[0]
+    ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
+      .curve(d3.curveBumpY)([[WIDTH / 2, 32], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
+    : null;
+  const pathSegments = [
+    ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
+    ...encounterSequence.slice(0, -1).flatMap((visit, index) => {
+    const next = encounterSequence[index + 1];
+    if (!next) return [];
+    const segment = d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
+      .curve(d3.curveBumpX)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
+    return segment ? [{ d: segment, index: index + 1 }] : [];
+    }),
+  ];
 
   return (
     <main style={{ minHeight: "100vh", padding: "28px 18px", background: "#ffffff", color: "#222" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
         <h1 style={{ fontFamily: "serif", fontWeight: 400 }}>Your exhibition constellation</h1>
         <p style={{ fontSize: 13, opacity: 0.65 }}>
-          A flattened interpretation of both floors · {positioned.length} encounters
+           · {positioned.length} artists collected
         </p>
         {loading && <p>Loading scans…</p>}
         {error && <p role="alert">Could not load scans: {error}</p>}
@@ -243,60 +347,123 @@ export default function FloorTestPage() {
             <svg
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               width="100%"
-              style={{ display: "block", background: "white", overflow: "hidden" }}
+              preserveAspectRatio="xMidYMid meet"
+              style={{
+                display: "block",
+                width: "100%",
+                height: "min(742px, calc(100dvh - 220px))",
+                background: "#f3f2e6",
+                overflow: "hidden",
+              }}
               onClick={exitZoom}
               aria-label="Visitor journey and interactive constellation"
             >
-              <FloorPlan />
+              {/* <FloorPlan yOffset={85} /> */}
+              <defs>
+                <filter id="trace-halo" x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
+                  <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
+                  <feGaussianBlur in="organic" stdDeviation="9" />
+                </filter>
+                <filter id="trace-soft" x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
+                  <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
+                  <feGaussianBlur in="organic" stdDeviation="3" />
+                </filter>
+              </defs>
+              <text
+                x={WIDTH / 2}
+                y={16}
+                textAnchor="middle"
+                fill="#555"
+                fontSize="12"
+                pointerEvents="none"
+              >
+                entrance
+              </text>
+              <g>
               {/* The path is a sequence of encounters, not a measured walking route. */}
-              {path && (
-                <path d={path} fill="none" stroke="#555" strokeWidth={2}
-                  opacity={(1 - packProgress) * 0.65}
-                  pathLength={1} strokeDasharray="1"
-                  strokeDashoffset={1 - Math.min(1, journeyProgress / Math.max(1, positioned.length))}
-                  pointerEvents="none" />
-              )}
+              {pathSegments.map(({ d, index }) => {
+                const segmentProgress = Math.max(0, Math.min(1, journeyProgress - index));
+                const strokeDashoffset = 1 - segmentProgress;
+                return (
+                  <g key={index} opacity={0.65} pointerEvents="none">
+                    <path d={d} fill="none" stroke="#873c70" strokeWidth={10} strokeLinecap="round"
+                      opacity={0.2} pathLength={1} strokeDasharray="1" strokeDashoffset={strokeDashoffset}
+                      filter="url(#trace-halo)" />
+                    <path d={d} fill="none" stroke="#873c70" strokeWidth={5} strokeLinecap="round"
+                      opacity={0.22} pathLength={1} strokeDasharray="1" strokeDashoffset={strokeDashoffset}
+                      filter="url(#trace-soft)" />
+                  </g>
+                );
+              })}
               {(["purple", "red", "green"] as const).map((group) => {
               
                 const anchor = ANCHORS[group];
+                const labelX = anchor.x + anchor.radius + 12;
+                const labelY = anchor.y;
                 const visited = positioned.some((item) => item.group === group);
-                  const size = anchor.radius * 4 * WHITE_CIRCLE_SCALE;
+                const labelProgress = Math.max(0, Math.min(1, labelsProgress));
+                const labelScale = 0.9 + labelProgress * 0.1;
                 return visited ? (
-                  <g key={group}  opacity={packProgress * (selected ? 1 - zoomProgress : 1)} pointerEvents="none">
-<image
-  href="/marks/white.png"
+                  <g
+                    key={group}
+                    opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
+                    transform={`translate(${anchor.x} ${anchor.y}) scale(${labelScale}) translate(${-anchor.x} ${-anchor.y})`}
+                    pointerEvents="none"
+                  >
+{/* <image
+  href="/marks/purple/2/03.png"
   x={anchor.x - size / 2}
   y={anchor.y - size / 2 + WHITE_CIRCLE_Y_OFFSET}
   width={size}
   height={size}
   preserveAspectRatio="xMidYMid meet"
   style={{ pointerEvents: "none" }}
-/>
-                    <text x={anchor.x} y={anchor.y + anchor.radius + 15} textAnchor="middle" fill={COLORS[group]} fontSize="12">{group.toUpperCase()}</text>
+/> */}
+                    <text x={labelX} y={labelY} textAnchor="middle" fill={COLORS[group]} fontSize="6">{GROUP_LABELS[group]}</text>
                   </g>
                 ) : null;
               })}
               {positioned.map((item, index) => {
-                if (stage === "journey" && journeyProgress < index) return null;
-                const x = d3.interpolateNumber(item.x, item.targetX)(packProgress);
-                const y = d3.interpolateNumber(item.y, item.targetY)(packProgress);
-                const size = d3.interpolateNumber(42, item.radius * 2)(packProgress);
+                const firstEncounterIndex = item.encounterIndexes[0];
+                if (stage === "journey" && journeyProgress < firstEncounterIndex + 1) return null;
+                const completedEncounters = item.encounterIndexes.filter(
+                  (encounterIndex) => journeyProgress >= encounterIndex + 1
+                ).length;
+                const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
+                const x = item.x;
+                const y = item.y;
+                const size = journeyMarkSize;
                 const active = selected === item.scanId;
                 const displayX = active ? d3.interpolateNumber(x, WIDTH / 2)(zoomProgress) : x;
                 const displayY = active ? d3.interpolateNumber(y, HEIGHT / 2)(zoomProgress) : y;
                 const displaySize = active ? d3.interpolateNumber(size, WIDTH * 0.9)(zoomProgress) : size;
+                const artistFontSize = Math.max(6, Math.min(15, displaySize * 0.105));
+                const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
                 const opacity = !selected || active ? 1 : 1 - zoomProgress;
                 return (
-                  <g key={item.scanId} opacity={opacity} style={{ cursor: stage === "packed" ? "pointer" : "default" }}
+                  <g key={item.scanId} opacity={opacity} style={{ cursor: stage === "complete" ? "pointer" : "default" }}
                     pointerEvents={selected && !active ? "none" : "auto"}
+                    onMouseEnter={() => { if (stage === "complete") setHovered(item.scanId); }}
+                    onMouseLeave={() => setHovered(null)}
                     onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
                     <title>{`${item.artist} — ${item.name}`}</title>
-                    <image href={markFrame(item.group, index, journeyProgress, stage)} x={displayX - displaySize / 2} y={displayY - displaySize / 2}
-                      width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" />
+                    <image href={markFrame(item.group, firstEncounterIndex, journeyProgress - 1, stage)} x={displayX - displaySize / 2} y={displayY - displaySize / 2}
+                      width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet"
+                      style={{ filter: `brightness(${brightness})` }} />
                     <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
+                    {(active || hovered === item.scanId) && (
+                      <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
+                        fill="#f3f2e6" fontSize={artistFontSize} fontWeight="600"
+                        textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
+                        {item.artist}
+                      </text>
+                    )}
                   </g>
                 );
               })}
+              </g>
             </svg>
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
               <button onClick={() => setReplayKey((value) => value + 1)}
@@ -304,7 +471,7 @@ export default function FloorTestPage() {
                 ↻ Replay
               </button>
               <span style={{ fontSize: 12, opacity: 0.6 }}>
-                {stage === "packed" ? "Tap a mark to zoom; tap again to return" : "Reconstructing your encounters…"}
+                {stage === "complete" ? "Tap a mark to zoom; tap again to return" : "Reconstructing your encounters…"}
               </span>
             </div>
           </>

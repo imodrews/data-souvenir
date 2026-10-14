@@ -1,6 +1,10 @@
-export default function FloorPlan() {
+type FloorPlanProps = {
+  yOffset?: number;
+};
+
+export default function FloorPlan({ yOffset = 0 }: FloorPlanProps) {
   return (
-    <g>
+    <g transform={`translate(0 ${yOffset})`}>
                  <defs>
         <filter
           id="floorGlow"
@@ -14,7 +18,7 @@ export default function FloorPlan() {
       </defs>
    
     
-    <g     stroke="#3e68f2"
+    <g     stroke="black"
         opacity="1"
         filter="url(#floorGlow)"
        >
