@@ -439,7 +439,7 @@ export default function FloorTestPage() {
                 const displayX = active ? d3.interpolateNumber(x, WIDTH / 2)(zoomProgress) : x;
                 const displayY = active ? d3.interpolateNumber(y, HEIGHT / 2)(zoomProgress) : y;
                 const displaySize = active ? d3.interpolateNumber(size, WIDTH * 0.9)(zoomProgress) : size;
-                const artistFontSize = Math.max(6, Math.min(15, displaySize * 0.105));
+                const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
                 const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
                 const opacity = !selected || active ? 1 : 1 - zoomProgress;
                 return (
@@ -455,7 +455,7 @@ export default function FloorTestPage() {
                     <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
                     {(active || hovered === item.scanId) && (
                       <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
-                        fill="#f3f2e6" fontSize={artistFontSize} fontWeight="600"
+                        fill="#f3f2e6" fontSize={artistFontSize} fontWeight="400"
                         textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
                         {item.artist}
                       </text>
