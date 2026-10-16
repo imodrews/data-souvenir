@@ -8,3 +8,15 @@ export function getSessionId() {
 
   return sessionId;
 }
+
+export function isVisitFinished(sessionId: string) {
+  return localStorage.getItem("finished_session_id") === sessionId;
+}
+
+export function finishVisit(sessionId: string) {
+  localStorage.setItem("finished_session_id", sessionId);
+}
+
+export function getFinalVisitPath(sessionId: string) {
+  return `/floor-test/${encodeURIComponent(sessionId)}`;
+}

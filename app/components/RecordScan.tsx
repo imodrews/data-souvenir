@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "../../lib/supabase/client";
-import { getSessionId } from "../../lib/session";
+import { getFinalVisitPath, getSessionId, isVisitFinished } from "../../lib/session";
 
 type RecordScanProps = {
   artworkId: string;
@@ -16,6 +16,10 @@ export default function RecordScan({ artworkId }: RecordScanProps) {
     hasRecorded.current = true;
     async function recordScan() {
       const sessionId = getSessionId();
+      if (isVisitFinished(sessionId)) {
+        window.location.replace(getFinalVisitPath(sessionId));
+        return;
+      }
       const supabase = createClient();
 
     const { error } = await supabase

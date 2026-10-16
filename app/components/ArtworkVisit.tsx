@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getSessionId } from "../../lib/session";
+import { getFinalVisitPath, getSessionId, isVisitFinished } from "../../lib/session";
 import Collection from "./Collection";
 import styles from "../page.module.css";
 
@@ -15,12 +15,17 @@ export default function ArtworkVisit({ artworkId }: { artworkId: string }) {
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       try {
+        const sessionId = getSessionId();
+        if (isVisitFinished(sessionId)) {
+          window.location.replace(getFinalVisitPath(sessionId));
+          return;
+        }
         const name = localStorage.getItem("visitor_name");
         if (!name) {
           router.replace(`/?artwork=${encodeURIComponent(artworkId)}`);
           return;
         }
-        setVisitor({ name, sessionId: getSessionId() });
+        setVisitor({ name, sessionId });
       } catch {
         setError("Please allow browser storage to collect artworks.");
       }

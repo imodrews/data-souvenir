@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { scaleLinear } from "d3";
 import { createClient } from "../../lib/supabase/client";
+import { getFinalVisitPath, isVisitFinished } from "../../lib/session";
 import type { Artwork } from "../../types/artwork";
 import styles from "../page.module.css";
 
@@ -19,7 +20,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const scanRequest = useRef<{ key: string; promise: Promise<CollectedArtwork> } | null>(null);
+  const scanRequest = useRef<{ key: string; promise: Promise<CollectedArtwork | null> } | null>(null);
   const filterId = useId().replaceAll(":", "");
 
   useEffect(() => {
@@ -41,12 +42,20 @@ export default function Collection({ sessionId, artworkId }: Props) {
 
     async function load() {
       if (artworkId) {
+        if (isVisitFinished(sessionId)) {
+          window.location.replace(getFinalVisitPath(sessionId));
+          return;
+        }
         const key = `${sessionId}:${artworkId}`;
         if (scanRequest.current?.key !== key) {
           const promise = (async () => {
             const { data, error: artworkError } = await supabase.from("artworks")
               .select("*, artist:artists (name)").eq("id", artworkId).single();
             if (artworkError || !data) throw new Error("This artwork could not be found. Please check the tag and try again.");
+            if (isVisitFinished(sessionId)) {
+              window.location.replace(getFinalVisitPath(sessionId));
+              return null;
+            }
             const { error: scanError } = await supabase.from("scans")
               .insert({ session_id: sessionId, artwork_id: artworkId });
             if (scanError) throw new Error(`Your tap could not be saved: ${scanError.message}`);
@@ -55,6 +64,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
           scanRequest.current = { key, promise };
         }
         const artwork = await scanRequest.current.promise;
+        if (!artwork) return;
         if (!cancelled) setCurrent(artwork);
       }
       await loadScans();
@@ -128,6 +138,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
         <h3>Your trace</h3>
         <p>{artworks.length} {artworks.length === 1 ? "artwork" : "artworks"} collected</p>
       </div>
+      <Link className={styles.action} href="/exit">Exit and view my souvenir</Link>
       {artworks.length ? (
         <>
           <svg className={styles.journey} viewBox="0 0 694 760" role="img" aria-label={`Your journey through ${artworks.length} artworks`}>

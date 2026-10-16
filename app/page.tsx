@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { getSessionId } from "../lib/session";
+import { getFinalVisitPath, getSessionId, isVisitFinished } from "../lib/session";
 import Collection from "./components/Collection";
 import styles from "./page.module.css";
 
@@ -14,8 +14,13 @@ export default function Home() {
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       try {
+        const id = getSessionId();
+        if (isVisitFinished(id)) {
+          window.location.replace(getFinalVisitPath(id));
+          return;
+        }
         setName(localStorage.getItem("visitor_name") ?? "");
-        setSessionId(getSessionId());
+        setSessionId(id);
       } catch {
         setError("Please allow browser storage to begin your visit.");
       }
