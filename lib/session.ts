@@ -18,5 +18,5 @@ export function finishVisit(sessionId: string) {
 }
 
 export function getFinalVisitPath(sessionId: string) {
-  return `/floor-test/${encodeURIComponent(sessionId)}`;
+  return `/souvenir/${encodeURIComponent(sessionId)}`;
 }
