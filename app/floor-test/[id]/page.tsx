@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as d3 from "d3";
 import gsap from "gsap";
 import { createClient } from "../../../lib/supabase/client";
+import { getFinishedVisits, getFinalVisitPath, type FinishedVisit } from "../../../lib/session";
 import FloorPlan from "../../components/FloorPlan";
 
 // Standalone prototype. Does not modify /d3-test/[id].
@@ -109,6 +111,7 @@ export default function FloorTestPage() {
   const params = useParams<{ id: string }>();
   const sessionId = params.id;
   const [items, setItems] = useState<JourneyItem[]>([]);
+  const [previousVisits, setPreviousVisits] = useState<FinishedVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<"journey" | "labels" | "complete">("journey");
@@ -120,6 +123,17 @@ export default function FloorTestPage() {
   const [replayKey, setReplayKey] = useState(0);
   const zoomTween = useRef<gsap.core.Tween | null>(null);
   const zoomValue = useRef({ value: 0 });
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        setPreviousVisits(getFinishedVisits().filter((visit) => visit.sessionId !== sessionId));
+      } catch {
+        setPreviousVisits([]);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -475,6 +489,24 @@ export default function FloorTestPage() {
               </span>
             </div>
           </>
+        )}
+        {previousVisits.length > 0 && (
+          <nav aria-label="Previous visualisations" style={{ marginTop: 32, borderTop: "1px solid #dedede", paddingTop: 20 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 400 }}>Previous visualisations</h2>
+            <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+              {previousVisits.map((visit, index) => {
+                const date = visit.finishedAt ? new Date(visit.finishedAt) : null;
+                const label = date && !Number.isNaN(date.getTime())
+                  ? `Visit from ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+                  : `Previous visit ${previousVisits.length - index}`;
+                return <li key={visit.sessionId} style={{ borderTop: "1px solid #eee" }}>
+                  <Link href={getFinalVisitPath(visit.sessionId)} style={{ display: "block", padding: "12px 0", textUnderlineOffset: 4, overflowWrap: "anywhere" }}>
+                    {label}
+                  </Link>
+                </li>;
+              })}
+            </ul>
+          </nav>
         )}
       </div>
     </main>

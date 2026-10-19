@@ -9,6 +9,7 @@ import styles from "./page.module.css";
 export default function Home() {
   const [name, setName] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [pendingArtworkId, setPendingArtworkId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [finishedVisits, setFinishedVisits] = useState<FinishedVisit[]>([]);
   const [error, setError] = useState("");
@@ -18,6 +19,7 @@ export default function Home() {
       try {
         const id = startFreshVisitIfFinished(getSessionId());
         setName(localStorage.getItem("visitor_name") ?? "");
+        setPendingArtworkId(new URLSearchParams(window.location.search).get("artwork"));
         setSessionId(id);
         setFinishedVisits(getFinishedVisits());
       } catch {
@@ -79,6 +81,7 @@ export default function Home() {
             <input id="visitor-name" name="visitor-name" autoComplete="given-name" maxLength={60}
               value={draft} onChange={(event) => setDraft(event.target.value)} required />
             <p className={styles.note}>Your name stays in this browser. It is not saved to our database.</p>
+            {pendingArtworkId && <p className={styles.note}>Your first artwork tap will be saved when you begin your visit.</p>}
             <button type="submit" disabled={!draft.trim() || !sessionId}>Begin my visit</button>
           </form>
         </section>
