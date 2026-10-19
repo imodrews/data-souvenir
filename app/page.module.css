@@ -40,6 +40,24 @@
 .collectionHeading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 32px; }
 .collectionHeading h3 { font-size: 20px; font-weight: 500; }
 .collectionHeading p { color: #666; font-size: 13px; }
+.kioskPage { display: grid; place-items: center; flex: 1; min-height: 100vh; padding: 32px 20px; background: #f3f2e6; color: #242424; text-align: center; }
+.kioskContent { width: min(100%, 520px); }
+.kioskEyebrow { margin-bottom: 24px; font-size: 12px; text-transform: uppercase; }
+.kioskIdle h1, .kioskResult h1 { font-size: 34px; font-weight: 500; overflow-wrap: anywhere; }
+.kioskIdle { width: min(100%, 400px); margin: 0 auto; }
+.kioskForm { display: grid; gap: 12px; margin-top: 28px; text-align: left; }
+.kioskForm label { font-size: 14px; }
+.kioskForm input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #888; border-radius: 2px; background: #fff; color: #242424; font: inherit; }
+.kioskForm input:focus-visible, .kioskButton:focus-visible, .kioskLink:focus-visible { outline: 2px solid #873c70; outline-offset: 3px; }
+.kioskError { color: #a32e2e; font-size: 13px; }
+.kioskButton { min-height: 48px; padding: 10px 18px; border: 1px solid #242424; border-radius: 2px; background: #242424; color: white; font: inherit; cursor: pointer; }
+.kioskResult > p { margin-top: 10px; color: #555; }
+.kioskQr { display: grid; place-items: center; width: min(80vw, 352px); aspect-ratio: 1; margin: 28px auto 16px; padding: 16px; background: white; }
+.kioskQr svg { display: block; width: 100%; height: auto; }
+.kioskLink { display: inline-block; margin: 0 auto 16px; padding: 8px; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
+.kioskResult .kioskButton { display: block; width: min(100%, 352px); margin: 0 auto; }
+:global(body:has(.kiosk-display-root)) { overflow: hidden; background: #f3f2e6; }
+:global(body:has(.kiosk-display-root) > nav) { display: none; }
 .journey { display: block; width: min(100%, 580px); aspect-ratio: 694 / 760; margin: 0 auto; }
 .empty { text-align: center; padding-bottom: 48px; color: #666; }
 .empty svg { display: block; width: min(100%, 300px); aspect-ratio: 300 / 220; margin: 20px auto; }
