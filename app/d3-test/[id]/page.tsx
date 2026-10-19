@@ -785,7 +785,7 @@ useEffect(() => {
         width="100%"
         style={{
           maxWidth: "900px",
-          background: "#000000",
+          background: "#f3f2e6",
         }}
         onClick={() => {
     if (selectedArtworkId) exitZoom();

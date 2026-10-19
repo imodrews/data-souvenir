@@ -1,14 +1,14 @@
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
+  --background: #f3f2e6;
+  --foreground: #242424;
     --font-heading: var(--font-roboto-condensed);
   --font-body: var(--font-inter);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #ffffff;
-    --foreground: #000000;
+    --background: #f3f2e6;
+    --foreground: #242424;
   }
 }
 

@@ -347,7 +347,7 @@ export default function FloorTestPage() {
   ];
 
   return (
-    <main style={{ minHeight: "100vh", padding: "28px 18px", background: "#ffffff", color: "#222" }}>
+    <main style={{ minHeight: "100vh", padding: "28px 18px", background: "#f3f2e6", color: "#222" }}>
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
         <h1 style={{ fontFamily: "serif", fontWeight: 400 }}>Your exhibition constellation</h1>
         <p style={{ fontSize: 13, opacity: 0.65 }}>

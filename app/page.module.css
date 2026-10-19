@@ -40,7 +40,7 @@
 .collectionHeading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 32px; }
 .collectionHeading h3 { font-size: 20px; font-weight: 500; }
 .collectionHeading p { color: #666; font-size: 13px; }
-.kioskPage { display: grid; place-items: center; flex: 1; min-height: 100vh; padding: 32px 20px; background: #f3f2e6; color: #242424; text-align: center; }
+.kioskPage { display: grid; place-items: center; flex: 1; min-height: 100vh; padding: 32px 20px; background: var(--background); color: #242424; text-align: center; }
 .kioskContent { width: min(100%, 520px); }
 .kioskEyebrow { margin-bottom: 24px; font-size: 12px; text-transform: uppercase; }
 .kioskIdle h1, .kioskResult h1 { font-size: 34px; font-weight: 500; overflow-wrap: anywhere; }
@@ -56,7 +56,7 @@
 .kioskQr svg { display: block; width: 100%; height: auto; }
 .kioskLink { display: inline-block; margin: 0 auto 16px; padding: 8px; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
 .kioskResult .kioskButton { display: block; width: min(100%, 352px); margin: 0 auto; }
-:global(body:has(.kiosk-display-root)) { overflow: hidden; background: #f3f2e6; }
+:global(body:has(.kiosk-display-root)) { overflow: hidden; background: var(--background); }
 :global(body:has(.kiosk-display-root) > nav) { display: none; }
 .journey { display: block; width: min(100%, 580px); aspect-ratio: 694 / 760; margin: 0 auto; }
 .empty { text-align: center; padding-bottom: 48px; color: #666; }
