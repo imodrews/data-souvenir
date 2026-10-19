@@ -35,7 +35,7 @@ export default function ArtworkVisit({ artworkId }: { artworkId: string }) {
       <h1>{visitor ? `${visitor.name}'s collection` : "Your collection"}</h1>
     </header>
     {error ? <p role="alert">{error}</p> : visitor ? (
-      <Collection key={artworkId} sessionId={visitor.sessionId} artworkId={artworkId} />
+      <Collection key={`${visitor.sessionId}:${artworkId}`} sessionId={visitor.sessionId} artworkId={artworkId} />
     ) : <p className={styles.status} role="status">Opening your visit...</p>}
     <Link className={styles.textLink} href="/">Back to my collection</Link>
   </main>;
