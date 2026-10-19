@@ -2,10 +2,12 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { createClient } from "../../lib/supabase/client";
 import styles from "../page.module.css";
 
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SITE_ORIGIN = (process.env.NEXT_PUBLIC_SITE_URL || "https://data-souvenir.vercel.app").replace(/\/$/, "");
+const BADGE_EXIT_CHANNEL = "badge-exit-display";
 
 export default function BadgeDisplayPage() {
   const [sessionInput, setSessionInput] = useState("");
@@ -21,6 +23,26 @@ export default function BadgeDisplayPage() {
       }
     });
     return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(BADGE_EXIT_CHANNEL)
+      .on("broadcast", { event: "session-ended" }, ({ payload }) => {
+        const receivedSessionId = (payload as { session_id?: unknown }).session_id;
+        if (typeof receivedSessionId !== "string" || !SESSION_ID_PATTERN.test(receivedSessionId)) return;
+
+        setSessionInput(receivedSessionId);
+        setSessionId(receivedSessionId);
+        setError("");
+        window.history.replaceState(null, "", `/badge-display?session_id=${encodeURIComponent(receivedSessionId)}`);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   function showVisualization(event: FormEvent<HTMLFormElement>) {
