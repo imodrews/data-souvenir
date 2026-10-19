@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { getFinalVisitPath, getSessionId, isVisitFinished } from "../lib/session";
+import Link from "next/link";
+import { getFinishedVisits, getFinalVisitPath, getSessionId, startFreshVisitIfFinished, type FinishedVisit } from "../lib/session";
 import Collection from "./components/Collection";
 import styles from "./page.module.css";
 
@@ -9,18 +10,16 @@ export default function Home() {
   const [name, setName] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [finishedVisits, setFinishedVisits] = useState<FinishedVisit[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       try {
-        const id = getSessionId();
-        if (isVisitFinished(id)) {
-          window.location.replace(getFinalVisitPath(id));
-          return;
-        }
+        const id = startFreshVisitIfFinished(getSessionId());
         setName(localStorage.getItem("visitor_name") ?? "");
         setSessionId(id);
+        setFinishedVisits(getFinishedVisits());
       } catch {
         setError("Please allow browser storage to begin your visit.");
       }
@@ -51,6 +50,20 @@ export default function Home() {
         <p className={styles.eyebrow}>An exhibition, collected by you</p>
         <h1>Data Souvenir</h1>
       </header>
+      {finishedVisits.length > 0 && <section className={styles.history} aria-labelledby="visit-history-heading">
+        <h2 id="visit-history-heading">Previous visualisations</h2>
+        <ul>
+          {finishedVisits.map((visit, index) => {
+            const date = visit.finishedAt ? new Date(visit.finishedAt) : null;
+            const label = date && !Number.isNaN(date.getTime())
+              ? `Visit from ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+              : `Previous visit ${finishedVisits.length - index}`;
+            return <li key={visit.sessionId}>
+              <Link href={getFinalVisitPath(visit.sessionId)}>{label}</Link>
+            </li>;
+          })}
+        </ul>
+      </section>}
       {error ? <p role="alert">{error}</p> : name === null ? (
         <p role="status">Opening your visit...</p>
       ) : !name ? (
