@@ -21,7 +21,7 @@
 .welcome h2, .collection h2 { font-size: 28px; font-weight: 500; overflow-wrap: anywhere; }
 .form { display: grid; gap: 14px; margin-top: 28px; }
 .form label { font-size: 15px; }
-.form input { width: 100%; min-height: 52px; border: 1px solid #aaa; border-radius: 3px; padding: 12px; font: inherit; background: white; color: var(--ink); }
+.form input { width: 100%; min-height: 52px; border: 0; border-bottom: 1px solid var(--ink); border-radius: 0; padding: 12px 0; font: inherit; background: transparent; color: var(--ink); }
 .form input:focus-visible { outline: 2px solid var(--trace); outline-offset: 3px; }
 .note { color: #666; font-size: 13px; line-height: 1.6; }
 .form button, .action { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 20px; border: 1px solid var(--ink); border-radius: 3px; background: var(--ink); color: white; font: inherit; cursor: pointer; text-align: center; }
