@@ -122,6 +122,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   }, [encounters]);
 
   const encounterCount = items.reduce((count, item) => count + item.encounterIndexes.length, 0);
+  const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
   const journeyMarkSize = Math.max(110, Math.min(280, 420 / Math.sqrt(items.length || 1)));
 
   const positioned = useMemo(() => {
@@ -189,7 +190,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   const canvasHeight = useMemo(() => mode === "live" ? HEIGHT : Math.max(HEIGHT, ...[...groupedLayout.values()].map((item) => item.y + item.size / 2 + 40)), [groupedLayout, mode]);
 
   useEffect(() => {
-    if (!positioned.length) return;
+    if (mode === "live" || !positioned.length) return;
     let timeline: gsap.core.Timeline | undefined;
     const frame = requestAnimationFrame(() => {
       setStage("journey");
@@ -237,7 +238,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
   function enterOrExit(scanId: string) {
-    if (stage !== "complete") return;
+    if (mode === "live" || stage !== "complete") return;
     zoomTween.current?.kill();
     if (selected === scanId) {
       zoomTween.current = gsap.to(zoomValue.current, {
@@ -291,7 +292,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
       <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#f3f2e6", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
-        aria-label="Visitor journey and interactive constellation">
+        aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
           <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
             <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
@@ -308,11 +309,11 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
         <g opacity={0.65} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={10} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, journeyProgress - index))} />)}
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
           <g filter={`url(#${filterId}-soft)`} opacity={0.22}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={5} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, journeyProgress - index))} />)}
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
         </g>
         {mode === "final" && (["purple", "red", "green"] as const).map((group) => {
@@ -327,8 +328,8 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           </g> : null;
         })}
         {displayedItems.map((item) => {
-          if (stage === "journey" && journeyProgress < item.encounterIndexes[0] + 1) return null;
-          const completedEncounters = item.encounterIndexes.filter((encounterIndex) => journeyProgress >= encounterIndex + 1).length;
+          if (mode === "final" && stage === "journey" && visibleJourneyProgress < item.encounterIndexes[0] + 1) return null;
+          const completedEncounters = item.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
           const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
           const active = selected === item.scanId;
           const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
@@ -337,9 +338,9 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
           const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
           return <g key={item.scanId} opacity={!selected || active ? 1 : 1 - zoomProgress}
-            style={{ cursor: stage === "complete" ? "pointer" : "default" }}
+            style={{ cursor: mode === "final" && stage === "complete" ? "pointer" : "default" }}
             pointerEvents={selected && !active ? "none" : "auto"}
-            onMouseEnter={() => { if (stage === "complete") setHovered(item.scanId); }}
+            onMouseEnter={() => { if (mode === "final" && stage === "complete") setHovered(item.scanId); }}
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
@@ -353,15 +354,15 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           </g>;
         })}
       </svg>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
-        {mode === "final" && <button onClick={() => setReplayKey((value) => value + 1)}
+      {mode === "final" && <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
+        <button onClick={() => setReplayKey((value) => value + 1)}
           style={{ padding: "9px 16px", border: "1px solid #777", borderRadius: 3, background: "transparent", cursor: "pointer" }}>
           {"\u21bb Replay"}
-        </button>}
+        </button>
         <span style={{ fontSize: 12, opacity: 0.6 }}>
           {stage === "complete" ? "Tap a mark to zoom; tap again to return" : "Reconstructing your encounters\u2026"}
         </span>
-      </div>
+      </div>}
     </div>
   );
 }
