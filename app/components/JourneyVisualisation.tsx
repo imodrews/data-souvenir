@@ -43,9 +43,12 @@ const GROUP_LABELS: Record<Group, string> = {
 };
 
 function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
-  const x = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
-  const y = Math.max(...section.map((item) => item.y + item.size / 2)) + 28;
-  const width = Math.min(480, 2 * Math.min(x - 16, WIDTH - 16 - x));
+  const minX = Math.min(...section.map((item) => item.x - item.size / 2));
+  const maxX = Math.max(...section.map((item) => item.x + item.size / 2));
+  const minY = Math.min(...section.map((item) => item.y - item.size / 2));
+  const maxY = Math.max(...section.map((item) => item.y + item.size / 2));
+  const x = group === "green" ? maxX + 32 : 24;
+  const width = group === "green" ? WIDTH - 24 - x : minX - 32 - x;
   const maxCharacters = Math.max(1, Math.floor(width / (LABEL_FONT_SIZE * 0.6)));
   const lines: string[] = [];
   let line = "";
@@ -62,7 +65,12 @@ function getGroupLabelLayout(section: { x: number; y: number; size: number }[], 
     line = line ? `${line} ${remaining}` : remaining;
   }
   if (line) lines.push(line);
-  return { x, y, lines, bottom: y + (lines.length - 1) * LABEL_LINE_HEIGHT + 8 };
+  const y = (minY + maxY) / 2 - (lines.length - 1) * LABEL_LINE_HEIGHT / 2 + 6;
+  return {
+    x, y, lines,
+    top: Math.min(minY, y - LABEL_FONT_SIZE),
+    bottom: Math.max(maxY, y + (lines.length - 1) * LABEL_LINE_HEIGHT + 8),
+  };
 }
 
 function getGroupedLayout(items: JourneyItem[], markSize: number) {
@@ -85,17 +93,24 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
       x: centreX + (item.x - centreX) * contraction,
       y: centreY + (item.y - centreY) * contraction,
     }));
+    const minX = Math.min(...compactSection.map((item) => item.x)) - markSize / 2;
+    const maxX = Math.max(...compactSection.map((item) => item.x)) + markSize / 2;
     const minY = Math.min(...compactSection.map((item) => item.y)) - markSize / 2;
-    const offsetY = Math.max(0, nextTop - minY);
-    for (const item of compactSection) {
-      targets.set(item.scanId, {
-        x: item.x,
-        y: item.y + offsetY,
-        size: markSize,
-      });
+    const dotAreaWidth = WIDTH - 48 - 240 - 32;
+    const scale = Math.min(1, dotAreaWidth / (maxX - minX));
+    const left = group === "green" ? 24 : 24 + 240 + 32;
+    const fittedSection = compactSection.map((item) => ({
+      scanId: item.scanId,
+      x: left + (item.x - minX) * scale,
+      y: nextTop + (item.y - minY) * scale,
+      size: markSize * scale,
+    }));
+    const label = getGroupLabelLayout(fittedSection, group);
+    const offsetY = Math.max(0, nextTop - label.top);
+    for (const item of fittedSection) {
+      targets.set(item.scanId, { x: item.x, y: item.y + offsetY, size: item.size });
     }
-    const label = getGroupLabelLayout(compactSection.map((item) => ({ x: item.x, y: item.y + offsetY, size: markSize })), group);
-    nextTop = label.bottom + 36;
+    nextTop = label.bottom + offsetY + 48;
   }
   return targets;
 }
@@ -351,7 +366,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           const labelScale = 0.9 + labelProgress * 0.1;
           return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
             transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
-            <text x={label.x} y={label.y} textAnchor="middle" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+            <text x={label.x} y={label.y} textAnchor="start" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
               {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
             </text>
           </g>;
