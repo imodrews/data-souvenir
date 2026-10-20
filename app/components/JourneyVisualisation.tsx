@@ -29,11 +29,8 @@ export type JourneyEncounter = {
   y: number | null;
 };
 
-const ANCHORS: Record<Group, { x: number; y: number; radius: number }> = {
-  green: { x: 347, y: 180, radius: 82 },
-  red: { x: 347, y: 450, radius: 83 },
-  purple: { x: 347, y: 720, radius: 100 },
-};
+const LABEL_FONT_SIZE = 20;
+const LABEL_LINE_HEIGHT = 28;
 const COLORS: Record<Group, string> = {
   red: "#b85c5c",
   green: "#5f8f68",
@@ -44,6 +41,29 @@ const GROUP_LABELS: Record<Group, string> = {
   green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
   purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
 };
+
+function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
+  const x = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
+  const y = Math.max(...section.map((item) => item.y + item.size / 2)) + 28;
+  const width = Math.min(480, 2 * Math.min(x - 16, WIDTH - 16 - x));
+  const maxCharacters = Math.max(1, Math.floor(width / (LABEL_FONT_SIZE * 0.6)));
+  const lines: string[] = [];
+  let line = "";
+  for (const word of GROUP_LABELS[group].split(/\s+/)) {
+    if (line && line.length + word.length + 1 > maxCharacters) {
+      lines.push(line);
+      line = "";
+    }
+    let remaining = word;
+    while (remaining.length > maxCharacters) {
+      lines.push(remaining.slice(0, maxCharacters));
+      remaining = remaining.slice(maxCharacters);
+    }
+    line = line ? `${line} ${remaining}` : remaining;
+  }
+  if (line) lines.push(line);
+  return { x, y, lines, bottom: y + (lines.length - 1) * LABEL_LINE_HEIGHT + 8 };
+}
 
 function getGroupedLayout(items: JourneyItem[], markSize: number) {
   const targets = new Map<string, { x: number; y: number; size: number }>();
@@ -66,7 +86,6 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
       y: centreY + (item.y - centreY) * contraction,
     }));
     const minY = Math.min(...compactSection.map((item) => item.y)) - markSize / 2;
-    const maxY = Math.max(...compactSection.map((item) => item.y)) + markSize / 2;
     const offsetY = Math.max(0, nextTop - minY);
     for (const item of compactSection) {
       targets.set(item.scanId, {
@@ -75,7 +94,8 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
         size: markSize,
       });
     }
-    nextTop = maxY + offsetY + 80;
+    const label = getGroupLabelLayout(compactSection.map((item) => ({ x: item.x, y: item.y + offsetY, size: markSize })), group);
+    nextTop = label.bottom + 36;
   }
   return targets;
 }
@@ -187,7 +207,14 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   }, [items, journeyMarkSize, mode]);
 
   const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
-  const canvasHeight = useMemo(() => mode === "live" ? HEIGHT : Math.max(HEIGHT, ...[...groupedLayout.values()].map((item) => item.y + item.size / 2 + 40)), [groupedLayout, mode]);
+  const canvasHeight = useMemo(() => {
+    if (mode === "live") return HEIGHT;
+    const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
+      const section = positioned.filter((item) => item.group === group).map((item) => groupedLayout.get(item.scanId)!);
+      return section.length ? [getGroupLabelLayout(section, group).bottom + 24] : [];
+    });
+    return Math.max(HEIGHT, ...labelBottoms);
+  }, [groupedLayout, positioned, mode]);
 
   useEffect(() => {
     if (mode === "live" || !positioned.length) return;
@@ -317,15 +344,17 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           </g>
         </g>
         {mode === "final" && (["purple", "red", "green"] as const).map((group) => {
-          const anchor = ANCHORS[group];
           const section = displayedItems.filter((item) => item.group === group);
-          const labelY = Math.max(...section.map((item) => item.y + item.size / 2)) + 24;
+          if (!section.length) return null;
+          const label = getGroupLabelLayout(section, group);
           const labelProgress = Math.max(0, Math.min(1, labelsProgress));
           const labelScale = 0.9 + labelProgress * 0.1;
-          return section.length ? <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
-            transform={`translate(${anchor.x} ${labelY}) scale(${labelScale}) translate(${-anchor.x} ${-labelY})`} pointerEvents="none">
-            <text x={anchor.x} y={labelY} textAnchor="middle" fill={COLORS[group]} fontSize="8">{GROUP_LABELS[group]}</text>
-          </g> : null;
+          return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
+            transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
+            <text x={label.x} y={label.y} textAnchor="middle" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+              {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
+            </text>
+          </g>;
         })}
         {displayedItems.map((item) => {
           if (mode === "final" && stage === "journey" && visibleJourneyProgress < item.encounterIndexes[0] + 1) return null;
