@@ -59,7 +59,7 @@
   .visit { padding: 28px 20px 48px; }
   .welcome { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; min-height: calc(100svh - 76px); }
   .welcomeMark { width: 100%; height: calc(100svh - 76px); aspect-ratio: auto; }
-  .welcomeDot { width: clamp(170px, 48vw, 240px); scale: 1; }
+  .welcomeDot { width: clamp(155px, 44vw, 220px); scale: 1; }
   .header h1 { font-size: 34px; }
 }
 
