@@ -45,10 +45,33 @@ const GROUP_LABELS: Record<Group, string> = {
   purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
 };
 
+function getGroupedLayout(items: JourneyItem[], markSize: number) {
+  const targets = new Map<string, { x: number; y: number; size: number }>();
+  for (const group of ["green", "red", "purple"] as const) {
+    const circles = d3.packSiblings(items.filter((item) => item.group === group)
+      .map((item) => ({ r: markSize * 0.41 + 4, item })));
+    if (!circles.length) continue;
+    const minX = Math.min(...circles.map((circle) => circle.x - circle.r));
+    const maxX = Math.max(...circles.map((circle) => circle.x + circle.r));
+    const minY = Math.min(...circles.map((circle) => circle.y - circle.r));
+    const maxY = Math.max(...circles.map((circle) => circle.y + circle.r));
+    const scale = Math.min(1, (WIDTH - 64) / (maxX - minX), 220 / (maxY - minY));
+    for (const circle of circles) {
+      targets.set(circle.item.scanId, {
+        x: ANCHORS[group].x + (circle.x - (minX + maxX) / 2) * scale,
+        y: ANCHORS[group].y + (circle.y - (minY + maxY) / 2) * scale,
+        size: markSize * scale,
+      });
+    }
+  }
+  return targets;
+}
+
 export default function JourneyVisualisation({ encounters }: { encounters: JourneyEncounter[] }) {
   const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"journey" | "labels" | "complete">("journey");
+  const [stage, setStage] = useState<"journey" | "grouping" | "labels" | "complete">("journey");
   const [journeyProgress, setJourneyProgress] = useState(0);
+  const [groupingProgress, setGroupingProgress] = useState(0);
   const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -144,19 +167,22 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
     return journeyItems;
   }, [items, journeyMarkSize]);
 
+  const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
+
   useEffect(() => {
     if (!positioned.length) return;
     let timeline: gsap.core.Timeline | undefined;
     const frame = requestAnimationFrame(() => {
       setStage("journey");
       setJourneyProgress(0);
+      setGroupingProgress(0);
       setLabelsProgress(0);
       setSelected(null);
       setHovered(null);
       setZoomProgress(0);
       zoomValue.current.value = 0;
       zoomTween.current?.kill();
-      const values = { journey: 0, labels: 0 };
+      const values = { journey: 0, grouping: 0, labels: 0 };
       timeline = gsap.timeline();
       timeline.to(values, {
         journey: encounterCount,
@@ -165,6 +191,13 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
         onUpdate: () => setJourneyProgress(values.journey),
       });
       timeline.to({}, { duration: 0.6 });
+      timeline.call(() => setStage("grouping"));
+      timeline.to(values, {
+        grouping: 1,
+        duration: 1.2,
+        ease: "power2.inOut",
+        onUpdate: () => setGroupingProgress(values.grouping),
+      });
       timeline.call(() => setStage("labels"));
       timeline.to(values, {
         labels: 1,
@@ -200,7 +233,16 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
     }
   }
 
-  const encounterSequence = positioned
+  const displayedItems = positioned.map((item) => {
+    const target = groupedLayout.get(item.scanId)!;
+    return {
+      ...item,
+      x: d3.interpolateNumber(item.x, target.x)(groupingProgress),
+      y: d3.interpolateNumber(item.y, target.y)(groupingProgress),
+      size: d3.interpolateNumber(journeyMarkSize, target.size)(groupingProgress),
+    };
+  });
+  const encounterSequence = displayedItems
     .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
     .sort((first, second) => first.encounterIndex - second.encounterIndex);
   const entranceSegment = encounterSequence[0]
@@ -255,17 +297,17 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
           const labelScale = 0.9 + labelProgress * 0.1;
           return visited ? <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
             transform={`translate(${anchor.x} ${anchor.y}) scale(${labelScale}) translate(${-anchor.x} ${-anchor.y})`} pointerEvents="none">
-            <text x={anchor.x + anchor.radius + 12} y={anchor.y} textAnchor="middle" fill={COLORS[group]} fontSize="6">{GROUP_LABELS[group]}</text>
+            <text x={anchor.x} y={anchor.y + 140} textAnchor="middle" fill={COLORS[group]} fontSize="8">{GROUP_LABELS[group]}</text>
           </g> : null;
         })}
-        {positioned.map((item) => {
+        {displayedItems.map((item) => {
           if (stage === "journey" && journeyProgress < item.encounterIndexes[0] + 1) return null;
           const completedEncounters = item.encounterIndexes.filter((encounterIndex) => journeyProgress >= encounterIndex + 1).length;
           const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
           const active = selected === item.scanId;
           const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
           const displayY = active ? d3.interpolateNumber(item.y, HEIGHT / 2)(zoomProgress) : item.y;
-          const displaySize = active ? d3.interpolateNumber(journeyMarkSize, WIDTH * 0.9)(zoomProgress) : journeyMarkSize;
+          const displaySize = active ? d3.interpolateNumber(item.size, WIDTH * 0.9)(zoomProgress) : item.size;
           const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
           const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
           return <g key={item.scanId} opacity={!selected || active ? 1 : 1 - zoomProgress}
