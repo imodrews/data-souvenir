@@ -53,11 +53,11 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
     if (!section.length) continue;
     const centreX = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
     const centreY = (Math.min(...section.map((item) => item.y)) + Math.max(...section.map((item) => item.y))) / 2;
-    let contraction = 0.82;
+    let contraction = 0.65;
     for (let firstIndex = 0; firstIndex < section.length; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < section.length; secondIndex += 1) {
         const distance = Math.hypot(section[firstIndex].x - section[secondIndex].x, section[firstIndex].y - section[secondIndex].y);
-        if (distance > 0) contraction = Math.max(contraction, Math.min(1, (markSize * 0.82 + 2) / distance));
+        if (distance > 0) contraction = Math.max(contraction, (markSize * 0.82 + 6) / distance);
       }
     }
     const compactSection = section.map((item) => ({
