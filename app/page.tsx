@@ -45,25 +45,32 @@ export default function Home() {
   }
 
   return (
-    <main className={`${styles.visit}${!name ? " visitor-welcome" : ""}`}>
+    <main className={`${styles.visit} visitor-home${!name ? " visitor-welcome" : ""}`}>
       {name && <header className={styles.header}>
-        <p className={styles.eyebrow}>An exhibition, collected by you</p>
-        <h1>Data Souvenir</h1>
+        <div>
+          <p className={styles.eyebrow}>An exhibition, collected by you</p>
+          <h1>Data Souvenir</h1>
+        </div>
+        {finishedVisits.length > 0 && <>
+          <button type="button" className={styles.historyToggle} popoverTarget="visit-history">
+            Previous visualisations
+          </button>
+          <section id="visit-history" className={styles.history} popover="auto" aria-labelledby="visit-history-heading">
+            <h2 id="visit-history-heading">Previous visualisations</h2>
+            <ul>
+              {finishedVisits.map((visit, index) => {
+                const date = visit.finishedAt ? new Date(visit.finishedAt) : null;
+                const label = date && !Number.isNaN(date.getTime())
+                  ? `Visit from ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+                  : `Previous visit ${finishedVisits.length - index}`;
+                return <li key={visit.sessionId}>
+                  <Link href={getFinalVisitPath(visit.sessionId)}>{label}</Link>
+                </li>;
+              })}
+            </ul>
+          </section>
+        </>}
       </header>}
-      {name && finishedVisits.length > 0 && <section className={styles.history} aria-labelledby="visit-history-heading">
-        <h2 id="visit-history-heading">Previous visualisations</h2>
-        <ul>
-          {finishedVisits.map((visit, index) => {
-            const date = visit.finishedAt ? new Date(visit.finishedAt) : null;
-            const label = date && !Number.isNaN(date.getTime())
-              ? `Visit from ${date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
-              : `Previous visit ${finishedVisits.length - index}`;
-            return <li key={visit.sessionId}>
-              <Link href={getFinalVisitPath(visit.sessionId)}>{label}</Link>
-            </li>;
-          })}
-        </ul>
-      </section>}
       {error ? <p role="alert">{error}</p> : name === null ? (
         <p role="status">Opening your visit...</p>
       ) : !name ? (

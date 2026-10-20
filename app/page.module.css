@@ -11,17 +11,21 @@
   font-family: var(--font-body), monospace;
 }
 
-.header { border-bottom: 1px solid #dedede; padding-bottom: 24px; }
+.header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 1px solid #dedede; padding-bottom: 24px; }
+.header > div { min-width: 0; }
 .eyebrow { font-size: 12px; text-transform: uppercase; margin-bottom: 12px; }
 .header h1 { font-size: 40px; font-weight: 500; overflow-wrap: anywhere; }
-.history { margin: 24px 0; border-bottom: 1px solid #dedede; padding-bottom: 20px; }
+.historyToggle { margin-left: auto; max-width: 100%; min-height: 44px; padding: 10px 0; border: 0; border-bottom: 2px solid var(--ink); background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; text-align: right; overflow-wrap: anywhere; }
+.historyToggle:focus-visible, .history a:focus-visible { outline: 2px solid var(--trace); outline-offset: 4px; }
+.historyToggle[aria-expanded="true"] { border-color: var(--trace); }
+.history { position: fixed; inset: 92px 24px auto auto; width: min(360px, calc(100vw - 40px)); max-height: calc(100svh - 120px); margin: 0; padding: 20px; overflow-y: auto; border: 1px solid #dedede; border-radius: 4px; background: var(--background); color: var(--ink); font-family: var(--font-body), monospace; box-shadow: 0 8px 28px #00000018; }
 .history h2 { font-size: 18px; font-weight: 500; }
 .history ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .history li { border-top: 1px solid #eee; }
 .history a { display: block; padding: 12px 0; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
 .welcome { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: 48px; min-height: calc(100svh - 104px); margin: 0 auto; }
 .welcome > .form { min-width: 0; margin-top: 0; }
-:global(body:has(.visitor-welcome) > nav) { display: none; }
+:global(body:has(.visitor-home) > nav) { display: none; }
 .welcomeMark { display: block; justify-self: center; width: min(100%, calc((100svh - 104px) * .54545)); height: auto; aspect-ratio: 360 / 660; }
 .welcomeDot { transform-box: fill-box; transform-origin: center; animation: welcomeDotAppear 900ms cubic-bezier(.22, 1, .36, 1) both; }
 .welcomeDot:nth-of-type(2) { animation-delay: 450ms; }
