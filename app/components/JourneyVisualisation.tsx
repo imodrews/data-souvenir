@@ -47,22 +47,21 @@ const GROUP_LABELS: Record<Group, string> = {
 
 function getGroupedLayout(items: JourneyItem[], markSize: number) {
   const targets = new Map<string, { x: number; y: number; size: number }>();
+  let nextTop = 64;
   for (const group of ["green", "red", "purple"] as const) {
-    const circles = d3.packSiblings(items.filter((item) => item.group === group)
-      .map((item) => ({ r: markSize * 0.41 + 4, item })));
-    if (!circles.length) continue;
-    const minX = Math.min(...circles.map((circle) => circle.x - circle.r));
-    const maxX = Math.max(...circles.map((circle) => circle.x + circle.r));
-    const minY = Math.min(...circles.map((circle) => circle.y - circle.r));
-    const maxY = Math.max(...circles.map((circle) => circle.y + circle.r));
-    const scale = Math.min(1, (WIDTH - 64) / (maxX - minX), 220 / (maxY - minY));
-    for (const circle of circles) {
-      targets.set(circle.item.scanId, {
-        x: ANCHORS[group].x + (circle.x - (minX + maxX) / 2) * scale,
-        y: ANCHORS[group].y + (circle.y - (minY + maxY) / 2) * scale,
-        size: markSize * scale,
+    const section = items.filter((item) => item.group === group);
+    if (!section.length) continue;
+    const minY = Math.min(...section.map((item) => item.y)) - markSize / 2;
+    const maxY = Math.max(...section.map((item) => item.y)) + markSize / 2;
+    const offsetY = Math.max(0, nextTop - minY);
+    for (const item of section) {
+      targets.set(item.scanId, {
+        x: item.x,
+        y: item.y + offsetY,
+        size: markSize,
       });
     }
+    nextTop = maxY + offsetY + 80;
   }
   return targets;
 }
@@ -168,6 +167,8 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
   }, [items, journeyMarkSize]);
 
   const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
+  const finalHeight = Math.max(HEIGHT, ...[...groupedLayout.values()].map((item) => item.y + item.size / 2 + 40));
+  const canvasHeight = d3.interpolateNumber(HEIGHT, finalHeight)(groupingProgress);
 
   useEffect(() => {
     if (!positioned.length) return;
@@ -264,17 +265,17 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
 
   return (
     <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: "min(742px, calc(100dvh - 220px))", background: "#f3f2e6", overflow: "hidden" }}
+      <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
+        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#f3f2e6", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label="Visitor journey and interactive constellation">
         <defs>
-          <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+          <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
             <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
             <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
             <feGaussianBlur in="organic" stdDeviation="9" />
           </filter>
-          <filter id={`${filterId}-soft`} x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+          <filter id={`${filterId}-soft`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
             <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
             <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
             <feGaussianBlur in="organic" stdDeviation="3" />
@@ -292,12 +293,13 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
         })}
         {(["purple", "red", "green"] as const).map((group) => {
           const anchor = ANCHORS[group];
-          const visited = positioned.some((item) => item.group === group);
+          const section = displayedItems.filter((item) => item.group === group);
+          const labelY = Math.max(...section.map((item) => item.y + item.size / 2)) + 24;
           const labelProgress = Math.max(0, Math.min(1, labelsProgress));
           const labelScale = 0.9 + labelProgress * 0.1;
-          return visited ? <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
-            transform={`translate(${anchor.x} ${anchor.y}) scale(${labelScale}) translate(${-anchor.x} ${-anchor.y})`} pointerEvents="none">
-            <text x={anchor.x} y={anchor.y + 140} textAnchor="middle" fill={COLORS[group]} fontSize="8">{GROUP_LABELS[group]}</text>
+          return section.length ? <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
+            transform={`translate(${anchor.x} ${labelY}) scale(${labelScale}) translate(${-anchor.x} ${-labelY})`} pointerEvents="none">
+            <text x={anchor.x} y={labelY} textAnchor="middle" fill={COLORS[group]} fontSize="8">{GROUP_LABELS[group]}</text>
           </g> : null;
         })}
         {displayedItems.map((item) => {
@@ -306,7 +308,7 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
           const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
           const active = selected === item.scanId;
           const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
-          const displayY = active ? d3.interpolateNumber(item.y, HEIGHT / 2)(zoomProgress) : item.y;
+          const displayY = active ? d3.interpolateNumber(item.y, canvasHeight / 2)(zoomProgress) : item.y;
           const displaySize = active ? d3.interpolateNumber(item.size, WIDTH * 0.9)(zoomProgress) : item.size;
           const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
           const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
