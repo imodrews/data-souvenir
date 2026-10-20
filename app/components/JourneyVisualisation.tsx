@@ -80,7 +80,12 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
   return targets;
 }
 
-export default function JourneyVisualisation({ encounters }: { encounters: JourneyEncounter[] }) {
+type JourneyVisualisationProps = {
+  encounters: JourneyEncounter[];
+  mode: "live" | "final";
+};
+
+export default function JourneyVisualisation({ encounters, mode }: JourneyVisualisationProps) {
   const filterId = useId().replaceAll(":", "");
   const [stage, setStage] = useState<"journey" | "grouping" | "labels" | "complete">("journey");
   const [journeyProgress, setJourneyProgress] = useState(0);
@@ -138,8 +143,8 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
       : 0;
     const journeyItems = items.map((item) => ({
       ...item,
-      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (item.group === "purple" ? purpleOffsetX : 0),
-      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT) + (item.group === "purple" ? 55 : 0),
+      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
+      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT) + (mode === "final" && item.group === "purple" ? 55 : 0),
     }));
     const minCenterDistance = journeyMarkSize * 0.82 + 8;
     const visibleHalfSize = journeyMarkSize * 0.82 / 2;
@@ -178,11 +183,10 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
       if (!moved) break;
     }
     return journeyItems;
-  }, [items, journeyMarkSize]);
+  }, [items, journeyMarkSize, mode]);
 
   const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
-  const finalHeight = Math.max(HEIGHT, ...[...groupedLayout.values()].map((item) => item.y + item.size / 2 + 40));
-  const canvasHeight = d3.interpolateNumber(HEIGHT, finalHeight)(groupingProgress);
+  const canvasHeight = useMemo(() => mode === "live" ? HEIGHT : Math.max(HEIGHT, ...[...groupedLayout.values()].map((item) => item.y + item.size / 2 + 40)), [groupedLayout, mode]);
 
   useEffect(() => {
     if (!positioned.length) return;
@@ -205,28 +209,30 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
         ease: "none",
         onUpdate: () => setJourneyProgress(values.journey),
       });
-      timeline.to({}, { duration: 0.6 });
-      timeline.call(() => setStage("grouping"));
-      timeline.to(values, {
-        grouping: 1,
-        duration: 1.2,
-        ease: "power2.inOut",
-        onUpdate: () => setGroupingProgress(values.grouping),
-      });
-      timeline.call(() => setStage("labels"));
-      timeline.to(values, {
-        labels: 1,
-        duration: 0.8,
-        ease: "back.out(1.4)",
-        onUpdate: () => setLabelsProgress(values.labels),
-      });
+      if (mode === "final") {
+        timeline.to({}, { duration: 0.6 });
+        timeline.call(() => setStage("grouping"));
+        timeline.to(values, {
+          grouping: 1,
+          duration: 1.2,
+          ease: "power2.inOut",
+          onUpdate: () => setGroupingProgress(values.grouping),
+        });
+        timeline.call(() => setStage("labels"));
+        timeline.to(values, {
+          labels: 1,
+          duration: 0.8,
+          ease: "back.out(1.4)",
+          onUpdate: () => setLabelsProgress(values.labels),
+        });
+      }
       timeline.call(() => setStage("complete"));
     });
     return () => {
       cancelAnimationFrame(frame);
       timeline?.kill();
     };
-  }, [positioned, encounterCount, replayKey]);
+  }, [positioned, encounterCount, replayKey, mode]);
 
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
@@ -248,7 +254,8 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
     }
   }
 
-  const displayedItems = positioned.map((item) => {
+  const displayedItems = useMemo(() => positioned.map((item) => {
+    if (mode === "live") return { ...item, size: journeyMarkSize };
     const target = groupedLayout.get(item.scanId)!;
     return {
       ...item,
@@ -256,15 +263,16 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
       y: d3.interpolateNumber(item.y, target.y)(groupingProgress),
       size: d3.interpolateNumber(journeyMarkSize, target.size)(groupingProgress),
     };
-  });
-  const encounterSequence = displayedItems
+  }), [positioned, groupedLayout, journeyMarkSize, groupingProgress, mode]);
+  const pathSegments = useMemo(() => {
+    const encounterSequence = displayedItems
     .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
     .sort((first, second) => first.encounterIndex - second.encounterIndex);
   const entranceSegment = encounterSequence[0]
     ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
       .curve(d3.curveBumpY)([[WIDTH / 2, 32], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
     : null;
-  const pathSegments = [
+    return [
     ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
     ...encounterSequence.slice(0, -1).flatMap((visit, index) => {
       const next = encounterSequence[index + 1];
@@ -273,7 +281,8 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
         .curve(d3.curveBumpX)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
       return segment ? [{ d: segment, index: index + 1 }] : [];
     }),
-  ];
+    ];
+  }, [displayedItems]);
 
   if (!positioned.length) return <p>No artwork scans with positions found for this session.</p>;
 
@@ -296,16 +305,17 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
           </filter>
         </defs>
         <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#555" fontSize="12" pointerEvents="none">entrance</text>
-        {pathSegments.map(({ d, index }) => {
-          const strokeDashoffset = 1 - Math.max(0, Math.min(1, journeyProgress - index));
-          return <g key={index} opacity={0.65} pointerEvents="none">
-            <path d={d} fill="none" stroke="#873c70" strokeWidth={10} strokeLinecap="round" opacity={0.2}
-              pathLength={1} strokeDasharray="1" strokeDashoffset={strokeDashoffset} filter={`url(#${filterId}-halo)`} />
-            <path d={d} fill="none" stroke="#873c70" strokeWidth={5} strokeLinecap="round" opacity={0.22}
-              pathLength={1} strokeDasharray="1" strokeDashoffset={strokeDashoffset} filter={`url(#${filterId}-soft)`} />
-          </g>;
-        })}
-        {(["purple", "red", "green"] as const).map((group) => {
+        <g opacity={0.65} pointerEvents="none">
+          <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={10} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, journeyProgress - index))} />)}
+          </g>
+          <g filter={`url(#${filterId}-soft)`} opacity={0.22}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={5} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, journeyProgress - index))} />)}
+          </g>
+        </g>
+        {mode === "final" && (["purple", "red", "green"] as const).map((group) => {
           const anchor = ANCHORS[group];
           const section = displayedItems.filter((item) => item.group === group);
           const labelY = Math.max(...section.map((item) => item.y + item.size / 2)) + 24;
@@ -344,10 +354,10 @@ export default function JourneyVisualisation({ encounters }: { encounters: Journ
         })}
       </svg>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
-        <button onClick={() => setReplayKey((value) => value + 1)}
+        {mode === "final" && <button onClick={() => setReplayKey((value) => value + 1)}
           style={{ padding: "9px 16px", border: "1px solid #777", borderRadius: 3, background: "transparent", cursor: "pointer" }}>
           {"\u21bb Replay"}
-        </button>
+        </button>}
         <span style={{ fontSize: 12, opacity: 0.6 }}>
           {stage === "complete" ? "Tap a mark to zoom; tap again to return" : "Reconstructing your encounters\u2026"}
         </span>
