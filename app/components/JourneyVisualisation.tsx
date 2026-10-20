@@ -51,10 +51,24 @@ function getGroupedLayout(items: JourneyItem[], markSize: number) {
   for (const group of ["green", "red", "purple"] as const) {
     const section = items.filter((item) => item.group === group);
     if (!section.length) continue;
-    const minY = Math.min(...section.map((item) => item.y)) - markSize / 2;
-    const maxY = Math.max(...section.map((item) => item.y)) + markSize / 2;
+    const centreX = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
+    const centreY = (Math.min(...section.map((item) => item.y)) + Math.max(...section.map((item) => item.y))) / 2;
+    let contraction = 0.82;
+    for (let firstIndex = 0; firstIndex < section.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < section.length; secondIndex += 1) {
+        const distance = Math.hypot(section[firstIndex].x - section[secondIndex].x, section[firstIndex].y - section[secondIndex].y);
+        if (distance > 0) contraction = Math.max(contraction, Math.min(1, (markSize * 0.82 + 2) / distance));
+      }
+    }
+    const compactSection = section.map((item) => ({
+      ...item,
+      x: centreX + (item.x - centreX) * contraction,
+      y: centreY + (item.y - centreY) * contraction,
+    }));
+    const minY = Math.min(...compactSection.map((item) => item.y)) - markSize / 2;
+    const maxY = Math.max(...compactSection.map((item) => item.y)) + markSize / 2;
     const offsetY = Math.max(0, nextTop - minY);
-    for (const item of section) {
+    for (const item of compactSection) {
       targets.set(item.scanId, {
         x: item.x,
         y: item.y + offsetY,
