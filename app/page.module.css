@@ -94,6 +94,15 @@
 .artworkDetails { border-bottom: 1px solid #dedede; padding: 32px 0; }
 .artworkDetails h2 { font-size: 30px; font-weight: 500; overflow-wrap: anywhere; }
 .artworkDetails p { margin-top: 12px; line-height: 1.6; }
+.artworkVisit { padding-top: 16px; }
+.artworkVisit .header { align-items: baseline; gap: 8px 16px; padding-bottom: 12px; }
+.artworkVisit .header .eyebrow { margin-bottom: 0; }
+.artworkVisit .header h1 { font-size: 22px; }
+.artworkVisit .artworkDetails { padding: 12px 0; }
+.artworkVisit .artworkDetails h2 { font-size: 22px; line-height: 1.25; }
+.artworkVisit .artworkDetails p { margin-top: 6px; }
+.artworkVisit .artworkDetails .eyebrow { margin-top: 0; margin-bottom: 6px; }
+.artworkVisit .collectionHeading { margin-top: 12px; gap: 6px 12px; }
 .description { max-width: 620px; }
 .textLink { display: block; width: fit-content; max-width: 100%; padding: 14px 0; margin-top: 16px; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
 .artworkList { list-style: none; border-top: 1px solid #dedede; }

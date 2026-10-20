@@ -86,7 +86,7 @@ export default function FloorTestPage() {
         {loading && <p>Loading scans{"\u2026"}</p>}
         {error && <p role="alert">Could not load scans: {error}</p>}
         {!loading && !error && !encounters.length && <p>No artwork scans found for this session.</p>}
-        {!loading && !error && encounters.length > 0 && <JourneyVisualisation key={sessionId} encounters={encounters} />}
+        {!loading && !error && encounters.length > 0 && <JourneyVisualisation key={sessionId} encounters={encounters} mode="final" />}
         {previousVisits.length > 0 && (
           <nav aria-label="Previous visualisations" style={{ marginTop: 32, borderTop: "1px solid #dedede", paddingTop: 20 }}>
             <h2 style={{ fontSize: 18, fontWeight: 400 }}>Previous visualisations</h2>

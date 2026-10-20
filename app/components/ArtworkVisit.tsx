@@ -29,7 +29,7 @@ export default function ArtworkVisit({ artworkId }: { artworkId: string }) {
     return () => cancelAnimationFrame(frame);
   }, [artworkId, router]);
 
-  return <main className={styles.visit}>
+  return <main className={`${styles.visit} ${styles.artworkVisit}`}>
     <header className={styles.header}>
       <Link href="/" className={styles.eyebrow}>Data Souvenir</Link>
       <h1>{visitor ? `${visitor.name}'s collection` : "Your collection"}</h1>

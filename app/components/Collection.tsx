@@ -131,8 +131,6 @@ export default function Collection({ sessionId, artworkId }: Props) {
         <p className={styles.eyebrow}>Added to your collection</p>
         <h2>{current.title}</h2>
         {artist && <p>{artist.name}{current.year ? `, ${current.year}` : ""}</p>}
-        {current.material_eng && <p className={styles.note}>{current.material_eng}</p>}
-        {current.text_eng && <p className={styles.description}>{current.text_eng}</p>}
       </section>}
       <div className={styles.collectionHeading}>
         <h3>Your trace</h3>
@@ -140,7 +138,11 @@ export default function Collection({ sessionId, artworkId }: Props) {
       </div>
       {artworks.length ? (
         <>
-          <JourneyVisualisation encounters={journeyEncounters} />
+          <JourneyVisualisation encounters={journeyEncounters} mode="live" />
+          {current && (current.material_eng || current.text_eng) && <section className={styles.artworkDetails} aria-label="Artwork details">
+            {current.material_eng && <p className={styles.note}>{current.material_eng}</p>}
+            {current.text_eng && <p className={styles.description}>{current.text_eng}</p>}
+          </section>}
           <ol className={styles.artworkList}>
             {artworks.map((artwork, index) => <li key={artwork.id}>
               <span className={styles.number}>{String(index + 1).padStart(2, "0")}</span>
