@@ -317,7 +317,7 @@ export default function JourneyLinePage() {
   return (
     <main style={{ minHeight: "100vh", background: "#f3f2e6", color: "#222", padding: "28px 18px" }}>
       <div style={{ maxWidth: 850, margin: "0 auto" }}>
-        <h1 style={{ fontFamily: "serif", fontWeight: 400, marginBottom: 6 }}>
+        <h1 style={{ fontWeight: 400, marginBottom: 6 }}>
           Your exhibition journey
         </h1>
         <p style={{ fontSize: 13, opacity: 0.65, marginTop: 0 }}>

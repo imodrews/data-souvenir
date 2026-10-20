@@ -4,8 +4,11 @@
   width: min(100%, 960px);
   margin: 0 auto;
   padding: 40px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   color: var(--ink);
-  font-family: var(--font-body), sans-serif;
+  font-family: var(--font-body), monospace;
 }
 
 .header { border-bottom: 1px solid #dedede; padding-bottom: 24px; }
@@ -16,8 +19,22 @@
 .history ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .history li { border-top: 1px solid #eee; }
 .history a { display: block; padding: 12px 0; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
-.welcome { max-width: 440px; margin: 24px auto; }
-.welcomeMark { display: block; width: 100%; height: 200px; }
+.welcome { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: 48px; min-height: calc(100svh - 104px); margin: 0 auto; }
+.welcome > .form { min-width: 0; margin-top: 0; }
+:global(body:has(.visitor-welcome) > nav) { display: none; }
+.welcomeMark { display: block; justify-self: center; width: min(100%, calc((100svh - 104px) * .54545)); height: auto; aspect-ratio: 360 / 660; }
+.welcomeDot { transform-box: fill-box; transform-origin: center; animation: welcomeDotAppear 900ms cubic-bezier(.22, 1, .36, 1) both; }
+.welcomeDot:nth-of-type(2) { animation-delay: 450ms; }
+.welcomeDot:nth-of-type(3) { animation-delay: 900ms; }
+.welcomeTrace { stroke-dasharray: 1; animation: welcomeTraceDraw 1350ms ease-out 300ms both; }
+@keyframes welcomeDotAppear {
+  from { opacity: 0; transform: translateY(12px) scale(.65); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes welcomeTraceDraw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
 .welcome h2, .collection h2 { font-size: 28px; font-weight: 500; overflow-wrap: anywhere; }
 .form { display: grid; gap: 14px; margin-top: 28px; }
 .form label { font-size: 15px; }
@@ -26,12 +43,17 @@
 .note { color: #666; font-size: 13px; line-height: 1.6; }
 .form button, .action { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 20px; border: 1px solid var(--ink); border-radius: 3px; background: var(--ink); color: white; font: inherit; cursor: pointer; text-align: center; }
 .form button:disabled { opacity: .45; cursor: default; }
-.collection { padding-top: 28px; }
+.collection { display: flex; flex-direction: column; flex: 1; padding-top: 28px; }
+.collectionContent { display: flex; flex-direction: column; flex: 1; }
+.collectionFooter { margin-top: auto; padding-top: 32px; }
+.collectionFooter .action { width: 100%; }
 .collection > p { margin: 12px 0 24px; }
 .action:focus-visible, .form button:focus-visible { outline: 2px solid var(--trace); outline-offset: 4px; }
 
 @media (max-width: 600px) {
   .visit { padding: 28px 20px 48px; }
+  .welcome { grid-template-columns: minmax(0, .75fr) minmax(0, 1fr); gap: 16px; min-height: calc(100svh - 76px); }
+  .welcomeMark { width: min(100%, calc((100svh - 76px) * .54545)); }
   .header h1 { font-size: 34px; }
 }
 
@@ -59,8 +81,10 @@
 :global(body:has(.kiosk-display-root)) { overflow: hidden; background: var(--background); }
 :global(body:has(.kiosk-display-root) > nav) { display: none; }
 .journey { display: block; width: min(100%, 580px); aspect-ratio: 694 / 760; margin: 0 auto; }
-.empty { text-align: center; padding-bottom: 48px; color: #666; }
-.empty svg { display: block; width: min(100%, 300px); aspect-ratio: 300 / 220; margin: 20px auto; }
+.empty { display: grid; align-content: center; flex: 1; text-align: center; padding: 32px 0; color: #666; }
+.empty svg { display: block; width: min(100%, 400px); aspect-ratio: 2 / 1; margin: 0 auto 20px; }
+.empty h3 { color: var(--ink); font-size: 18px; font-weight: 500; }
+.empty p { max-width: 420px; margin: 12px auto 0; font-size: 14px; line-height: 1.7; }
 .artworkDetails { border-bottom: 1px solid #dedede; padding: 32px 0; }
 .artworkDetails h2 { font-size: 30px; font-weight: 500; overflow-wrap: anywhere; }
 .artworkDetails p { margin-top: 12px; line-height: 1.6; }
@@ -73,6 +97,7 @@
 .mark { animation: appear .7s ease-out both; }
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
+  .welcomeDot, .welcomeTrace { animation: none; }
   .trace { animation: none; stroke-dashoffset: 0; }
   .mark { animation: none; }
 }
@@ -93,7 +118,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-geist-sans);
+  font-family: var(--font-body), monospace;
   background-color: var(--background);
 }
 
@@ -221,7 +246,7 @@ a.secondary {
 }
 
 .code {
-  font-family: var(--font-geist-mono);
+  font-family: var(--font-body), monospace;
   font-size: 0.9em;
   background: color-mix(in srgb, currentColor 8%, transparent);
   padding: 0.1em 0.4em;

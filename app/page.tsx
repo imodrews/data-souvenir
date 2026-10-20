@@ -9,7 +9,6 @@ import styles from "./page.module.css";
 export default function Home() {
   const [name, setName] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [pendingArtworkId, setPendingArtworkId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [finishedVisits, setFinishedVisits] = useState<FinishedVisit[]>([]);
   const [error, setError] = useState("");
@@ -19,7 +18,6 @@ export default function Home() {
       try {
         const id = startFreshVisitIfFinished(getSessionId());
         setName(localStorage.getItem("visitor_name") ?? "");
-        setPendingArtworkId(new URLSearchParams(window.location.search).get("artwork"));
         setSessionId(id);
         setFinishedVisits(getFinishedVisits());
       } catch {
@@ -47,12 +45,12 @@ export default function Home() {
   }
 
   return (
-    <main className={styles.visit}>
-      <header className={styles.header}>
+    <main className={`${styles.visit}${!name ? " visitor-welcome" : ""}`}>
+      {name && <header className={styles.header}>
         <p className={styles.eyebrow}>An exhibition, collected by you</p>
         <h1>Data Souvenir</h1>
-      </header>
-      {finishedVisits.length > 0 && <section className={styles.history} aria-labelledby="visit-history-heading">
+      </header>}
+      {name && finishedVisits.length > 0 && <section className={styles.history} aria-labelledby="visit-history-heading">
         <h2 id="visit-history-heading">Previous visualisations</h2>
         <ul>
           {finishedVisits.map((visit, index) => {
@@ -70,18 +68,31 @@ export default function Home() {
         <p role="status">Opening your visit...</p>
       ) : !name ? (
         <section className={styles.welcome}>
-          <svg className={styles.welcomeMark} viewBox="0 0 360 240" aria-hidden="true">
-            <path d="M 70 150 Q 140 20 280 90" fill="none" stroke="#873c70" strokeWidth="2" />
-            <image href="/marks/blue-dot.png" x="0" y="80" width="140" height="140" />
-            <image href="/marks/blue-dot.png" x="210" y="20" width="140" height="140" />
+          <svg className={styles.welcomeMark} viewBox="0 0 360 660" aria-hidden="true">
+            <defs>
+              <filter id="welcome-trace-halo" x="0" y="0" width="360" height="660" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+                <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
+                <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
+                <feGaussianBlur in="organic" stdDeviation="9" />
+              </filter>
+              <filter id="welcome-trace-soft" x="0" y="0" width="360" height="660" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+                <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
+                <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
+                <feGaussianBlur in="organic" stdDeviation="3" />
+              </filter>
+            </defs>
+            <g opacity="0.65">
+              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="10" strokeLinecap="round" opacity="0.2" filter="url(#welcome-trace-halo)" />
+              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="5" strokeLinecap="round" opacity="0.22" filter="url(#welcome-trace-soft)" />
+            </g>
+            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="30" y="10" width="180" height="180" />
+            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="150" y="240" width="180" height="180" />
+            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="30" y="470" width="180" height="180" />
           </svg>
-          <h2>Every visit leaves a trace.</h2>
           <form onSubmit={beginVisit} className={styles.form}>
             <label htmlFor="visitor-name">What should we call you?</label>
             <input id="visitor-name" name="visitor-name" autoComplete="given-name" maxLength={60}
               value={draft} onChange={(event) => setDraft(event.target.value)} required />
-            <p className={styles.note}>Your name stays in this browser. It is not saved to our database.</p>
-            {pendingArtworkId && <p className={styles.note}>Your first artwork tap will be saved when you begin your visit.</p>}
             <button type="submit" disabled={!draft.trim() || !sessionId}>Begin my visit</button>
           </form>
         </section>

@@ -126,7 +126,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
   );
 
   return (
-    <>
+    <div className={styles.collectionContent}>
       {current && <section className={styles.artworkDetails} aria-live="polite">
         <p className={styles.eyebrow}>Added to your collection</p>
         <h2>{current.title}</h2>
@@ -138,7 +138,6 @@ export default function Collection({ sessionId, artworkId }: Props) {
         <h3>Your trace</h3>
         <p>{artworks.length} {artworks.length === 1 ? "artwork" : "artworks"} collected</p>
       </div>
-      <Link className={styles.action} href="/exit">Exit and view my souvenir</Link>
       {artworks.length ? (
         <>
           <svg className={styles.journey} viewBox="0 0 694 760" role="img" aria-label={`Your journey through ${artworks.length} artworks`}>
@@ -176,10 +175,29 @@ export default function Collection({ sessionId, artworkId }: Props) {
           </ol>
           <Link className={styles.textLink} href={`/floor-test/${sessionId}`}>View my full souvenir</Link>
         </>
-      ) : <div className={styles.empty}>
-        <svg viewBox="0 0 300 220" aria-hidden="true"><image href="/marks/blue-dot.png" x="50" y="10" width="200" height="200" /></svg>
-        <p>No artworks collected yet.</p>
-      </div>}
-    </>
+      ) : <figure className={styles.empty}>
+        <svg viewBox="0 0 400 200" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="22" y="28" width="100" height="112" rx="2" />
+          <path d="M 36 112 L 60 76 L 78 96 L 96 60 L 108 112 Z" strokeWidth="1.5" />
+          <rect x="132" y="108" width="20" height="24" rx="2" />
+          <path d="M 140 116 Q 146 120 140 124 M 136 114 Q 145 120 136 126" strokeWidth="1.5" />
+          <g transform="rotate(-12 180 100)">
+            <rect x="158" y="50" width="48" height="90" rx="6" />
+            <path d="M 174 58 H 190 M 178 132 H 186" />
+          </g>
+          <path d="M 217 76 Q 207 68 217 60 M 225 82 Q 208 68 225 54" strokeWidth="1.5" />
+          <path d="M 246 100 H 292 M 284 92 L 292 100 L 284 108" />
+          <circle cx="344" cy="100" r="27" strokeDasharray="3 6" />
+          <path d="M 337 100 H 351 M 344 93 V 107" strokeWidth="1.5" />
+        </svg>
+        <figcaption>
+          <h3>Start your collection</h3>
+          <p>Tap your phone on the tag beside an artwork. A dot will appear here for each artwork you collect.</p>
+        </figcaption>
+      </figure>}
+      <footer className={styles.collectionFooter}>
+        <Link className={styles.action} href="/exit">Exit and view my souvenir</Link>
+      </footer>
+    </div>
   );
 }

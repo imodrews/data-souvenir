@@ -223,7 +223,6 @@ export default function PackingTestPage() {
     >
       <h1
         style={{
-          fontFamily: "serif",
           fontSize: "32px",
           fontWeight: 400,
           textAlign: "center",
