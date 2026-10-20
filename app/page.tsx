@@ -75,7 +75,8 @@ export default function Home() {
         <p role="status">Opening your visit...</p>
       ) : !name ? (
         <section className={styles.welcome}>
-          <svg className={styles.welcomeMark} viewBox="0 0 360 660" aria-hidden="true">
+          <div className={styles.welcomeMark} aria-hidden="true">
+          <svg className={styles.welcomeLine} viewBox="0 0 360 660" preserveAspectRatio="none">
             <defs>
               <filter id="welcome-trace-halo" x="0" y="0" width="360" height="660" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
                 <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
@@ -92,10 +93,17 @@ export default function Home() {
               <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="10" strokeLinecap="round" opacity="0.2" filter="url(#welcome-trace-halo)" />
               <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="5" strokeLinecap="round" opacity="0.22" filter="url(#welcome-trace-soft)" />
             </g>
-            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="30" y="10" width="180" height="180" />
-            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="150" y="240" width="180" height="180" />
-            <image className={styles.welcomeDot} href="/marks/blue-dot.png" x="30" y="470" width="180" height="180" />
           </svg>
+          <svg className={styles.welcomeDot} viewBox="0 0 180 180">
+            <image href="/marks/blue-dot.png" width="180" height="180" />
+          </svg>
+          <svg className={styles.welcomeDot} viewBox="0 0 180 180">
+            <image href="/marks/blue-dot.png" width="180" height="180" />
+          </svg>
+          <svg className={styles.welcomeDot} viewBox="0 0 180 180">
+            <image href="/marks/blue-dot.png" width="180" height="180" />
+          </svg>
+          </div>
           <form onSubmit={beginVisit} className={styles.form}>
             <label htmlFor="visitor-name">What should we call you?</label>
             <input id="visitor-name" name="visitor-name" autoComplete="given-name" maxLength={60}

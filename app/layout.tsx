@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Roboto_Mono } from "next/font/google";
+import { Ubuntu_Mono } from "next/font/google";
 import "./globals.css";
 import Navigation from "./components/Navigation";
 
-const robotoMono = Roboto_Mono({
+const ubuntuMono = Ubuntu_Mono({
   subsets: ["latin"],
+  weight: ["400", "700"],
   variable: "--font-roboto-mono",
   display: "swap",
 });
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={robotoMono.variable}>
+    <html lang="en" className={ubuntuMono.variable}>
       <body>
         <Navigation />
         {children}
