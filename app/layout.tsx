@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Ubuntu_Mono } from "next/font/google";
+import { Arimo as ActiveFont } from "next/font/google";
+// To try Inter, swap the active import:
+// import { Inter as ActiveFont } from "next/font/google";
 import "./globals.css";
 import Navigation from "./components/Navigation";
 
-const ubuntuMono = Ubuntu_Mono({
+const font = ActiveFont({
   subsets: ["latin"],
   weight: ["400", "700"],
-  variable: "--font-roboto-mono",
+  variable: "--font-sans",
   display: "swap",
 });
 
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={ubuntuMono.variable}>
+    <html lang="en" className={font.variable}>
       <body>
         <Navigation />
         {children}

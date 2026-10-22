@@ -332,7 +332,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   return (
     <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
       <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#f3f2e6", overflow: "hidden" }}
+        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#000", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
@@ -347,7 +347,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#555" fontSize="12" pointerEvents="none">entrance</text>
+        <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
         <g opacity={0.65} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={10} strokeLinecap="round"
@@ -388,11 +388,11 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/marks/blue-dot.png" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
+            <image href="/final_dot.png" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
               width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" style={{ filter: `brightness(${brightness})` }} />
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
-              fill="#f3f2e6" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
+              fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
               {item.artist}
             </text>}
           </g>;

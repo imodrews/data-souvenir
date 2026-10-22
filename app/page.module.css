@@ -1,5 +1,5 @@
 .visit {
-  --ink: #242424;
+  --ink: var(--foreground);
   --trace: #873c70;
   width: min(100%, 960px);
   margin: 0 auto;
@@ -8,7 +8,7 @@
   flex-direction: column;
   flex: 1;
   color: var(--ink);
-  font-family: var(--font-body), monospace;
+  font-family: var(--font-body), sans-serif;
 }
 
 .header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 1px solid #dedede; padding-bottom: 24px; }
@@ -18,7 +18,7 @@
 .historyToggle { margin-left: auto; max-width: 100%; min-height: 44px; padding: 10px 0; border: 0; border-bottom: 2px solid var(--ink); background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; text-align: right; overflow-wrap: anywhere; }
 .historyToggle:focus-visible, .history a:focus-visible { outline: 2px solid var(--trace); outline-offset: 4px; }
 .historyToggle[aria-expanded="true"] { border-color: var(--trace); }
-.history { position: fixed; inset: 92px 24px auto auto; width: min(360px, calc(100vw - 40px)); max-height: calc(100svh - 120px); margin: 0; padding: 20px; overflow-y: auto; border: 1px solid #dedede; border-radius: 4px; background: var(--background); color: var(--ink); font-family: var(--font-body), monospace; box-shadow: 0 8px 28px #00000018; }
+.history { position: fixed; inset: 92px 24px auto auto; width: min(360px, calc(100vw - 40px)); max-height: calc(100svh - 120px); margin: 0; padding: 20px; overflow-y: auto; border: 1px solid #dedede; border-radius: 4px; background: var(--background); color: var(--ink); font-family: var(--font-body), sans-serif; box-shadow: 0 8px 28px #00000018; }
 .history h2 { font-size: 18px; font-weight: 500; }
 .history ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .history li { border-top: 1px solid #eee; }
@@ -45,8 +45,8 @@
 .form label { font-size: 15px; }
 .form input { width: 100%; min-height: 52px; border: 0; border-bottom: 1px solid var(--ink); border-radius: 0; padding: 12px 0; font: inherit; background: transparent; color: var(--ink); }
 .form input:focus-visible { outline: 2px solid var(--trace); outline-offset: 3px; }
-.note { color: #666; font-size: 13px; line-height: 1.6; }
-.form button, .action { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 20px; border: 1px solid var(--ink); border-radius: 3px; background: var(--ink); color: white; font: inherit; cursor: pointer; text-align: center; }
+.note { color: var(--foreground); font-size: 13px; line-height: 1.6; }
+.form button, .action { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 20px; border: 1px solid var(--ink); border-radius: 3px; background: #242424; color: var(--foreground); font: inherit; cursor: pointer; text-align: center; }
 .form button:disabled { opacity: .45; cursor: default; }
 .collection { display: flex; flex-direction: column; flex: 1; padding-top: 28px; }
 .collectionContent { display: flex; flex-direction: column; flex: 1; }
@@ -67,19 +67,19 @@
 .status .action { margin-top: 16px; }
 .collectionHeading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 32px; }
 .collectionHeading h3 { font-size: 20px; font-weight: 500; }
-.collectionHeading p { color: #666; font-size: 13px; }
-.kioskPage { display: grid; place-items: center; flex: 1; min-height: 100vh; padding: 32px 20px; background: var(--background); color: #242424; text-align: center; }
+.collectionHeading p { color: var(--foreground); font-size: 13px; }
+.kioskPage { display: grid; place-items: center; flex: 1; min-height: 100vh; padding: 32px 20px; background: var(--background); color: var(--foreground); text-align: center; }
 .kioskContent { width: min(100%, 520px); }
 .kioskEyebrow { margin-bottom: 24px; font-size: 12px; text-transform: uppercase; }
 .kioskIdle h1, .kioskResult h1 { font-size: 34px; font-weight: 500; overflow-wrap: anywhere; }
 .kioskIdle { width: min(100%, 400px); margin: 0 auto; }
 .kioskForm { display: grid; gap: 12px; margin-top: 28px; text-align: left; }
 .kioskForm label { font-size: 14px; }
-.kioskForm input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #888; border-radius: 2px; background: #fff; color: #242424; font: inherit; }
+.kioskForm input { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid #888; border-radius: 2px; background: var(--background); color: var(--foreground); font: inherit; }
 .kioskForm input:focus-visible, .kioskButton:focus-visible, .kioskLink:focus-visible { outline: 2px solid #873c70; outline-offset: 3px; }
 .kioskError { color: #a32e2e; font-size: 13px; }
-.kioskButton { min-height: 48px; padding: 10px 18px; border: 1px solid #242424; border-radius: 2px; background: #242424; color: white; font: inherit; cursor: pointer; }
-.kioskResult > p { margin-top: 10px; color: #555; }
+.kioskButton { min-height: 48px; padding: 10px 18px; border: 1px solid #242424; border-radius: 2px; background: #242424; color: var(--foreground); font: inherit; cursor: pointer; }
+.kioskResult > p { margin-top: 10px; color: var(--foreground); }
 .kioskQr { display: grid; place-items: center; width: min(80vw, 352px); aspect-ratio: 1; margin: 28px auto 16px; padding: 16px; background: white; }
 .kioskQr svg { display: block; width: 100%; height: auto; }
 .kioskLink { display: inline-block; margin: 0 auto 16px; padding: 8px; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
@@ -87,7 +87,7 @@
 :global(body:has(.kiosk-display-root)) { overflow: hidden; background: var(--background); }
 :global(body:has(.kiosk-display-root) > nav) { display: none; }
 .journey { display: block; width: min(100%, 580px); aspect-ratio: 694 / 760; margin: 0 auto; }
-.empty { display: grid; align-content: center; flex: 1; text-align: center; padding: 32px 0; color: #666; }
+.empty { display: grid; align-content: center; flex: 1; text-align: center; padding: 32px 0; color: var(--foreground); }
 .empty svg { display: block; width: min(100%, 400px); aspect-ratio: 2 / 1; margin: 0 auto 20px; }
 .empty h3 { color: var(--ink); font-size: 18px; font-weight: 500; }
 .empty p { max-width: 420px; margin: 12px auto 0; font-size: 14px; line-height: 1.7; }
@@ -107,7 +107,7 @@
 .textLink { display: block; width: fit-content; max-width: 100%; padding: 14px 0; margin-top: 16px; text-decoration: underline; text-underline-offset: 4px; overflow-wrap: anywhere; }
 .artworkList { list-style: none; border-top: 1px solid #dedede; }
 .artworkList li { display: flex; gap: 20px; border-bottom: 1px solid #dedede; padding: 18px 0; line-height: 1.5; overflow-wrap: anywhere; }
-.number { color: #777; font-size: 13px; flex-shrink: 0; }
+.number { color: var(--foreground); font-size: 13px; flex-shrink: 0; }
 .trace { stroke-dasharray: 1; stroke-dashoffset: 1; animation: drawPath 1.2s ease-out forwards; }
 .mark { animation: appear .7s ease-out both; }
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
@@ -118,11 +118,11 @@
 }
 
 .page {
-  --background: #fafafa;
+  --background: #000;
   --foreground: #fff;
 
-  --text-primary: #000;
-  --text-secondary: #666;
+  --text-primary: var(--foreground);
+  --text-secondary: var(--foreground);
 
   --button-primary-hover: #383838;
   --button-secondary-hover: #f2f2f2;
@@ -133,7 +133,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-body), monospace;
+  font-family: var(--font-body), sans-serif;
   background-color: var(--background);
 }
 
@@ -145,7 +145,7 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  background-color: var(--foreground);
+  background-color: var(--background);
   padding: 120px 60px;
 }
 
@@ -251,8 +251,8 @@ a.secondary {
     --background: #000;
     --foreground: #000;
 
-    --text-primary: #ededed;
-    --text-secondary: #999;
+    --text-primary: var(--foreground);
+    --text-secondary: var(--foreground);
 
     --button-primary-hover: #ccc;
     --button-secondary-hover: #1a1a1a;
@@ -261,7 +261,7 @@ a.secondary {
 }
 
 .code {
-  font-family: var(--font-body), monospace;
+  font-family: var(--font-body), sans-serif;
   font-size: 0.9em;
   background: color-mix(in srgb, currentColor 8%, transparent);
   padding: 0.1em 0.4em;

@@ -785,7 +785,7 @@ useEffect(() => {
         width="100%"
         style={{
           maxWidth: "900px",
-          background: "#f3f2e6",
+          background: "#000",
         }}
         onClick={() => {
     if (selectedArtworkId) exitZoom();
@@ -1089,7 +1089,7 @@ const markOpacity =
 
                     fontSize={10}
 
-                    fill="#222"
+                    fill="#e1dfd2"
 
                     opacity={
                       packProgress
