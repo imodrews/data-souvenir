@@ -217,7 +217,7 @@ export default function PackingTestPage() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#f3f2e6",
+        background: "#000",
         padding: "40px 20px",
       }}
     >
@@ -227,7 +227,7 @@ export default function PackingTestPage() {
           fontWeight: 400,
           textAlign: "center",
           marginBottom: "24px",
-          color: "#222",
+          color: "#e1dfd2",
         }}
       >
         Exhibition Constellation
