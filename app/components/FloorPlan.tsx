@@ -19,7 +19,7 @@ export default function FloorPlan({ yOffset = 0 }: FloorPlanProps) {
    
     
     <g     stroke="black"
-        opacity="1"
+      opacity="1"
         filter="url(#floorGlow)"
        >
  
