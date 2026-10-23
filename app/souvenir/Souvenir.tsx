@@ -81,16 +81,11 @@ export default function Souvenir({ sessionId }: SouvenirProps) {
       <h2>Your path</h2>
 
       <svg
-        viewBox="0 0 231 694"
+        viewBox="0 0 694 231"
         width="100%"
         preserveAspectRatio="xMidYMid meet"
       >
-        <g transform="translate(231 0) rotate(90)">
-          <FloorPlan />
-        </g>
-
-        <image href="/bottom_layer.png" x="0" y="0" width="231" height="688" />
-        <image href="/top_layer.png" x="0" y="405" width="231" height="289" />
+        <FloorPlan />
 
         <defs>
           <radialGradient id="fuzzyDot">
@@ -125,7 +120,6 @@ export default function Souvenir({ sessionId }: SouvenirProps) {
           </filter>
         </defs>
 
-        <g transform="translate(231 0) rotate(90)">
         {/* PATHS */}
         {selectedArtworkData.slice(1).map((artwork, index) => {
           const previousArtwork = selectedArtworkData[index];
@@ -198,7 +192,6 @@ export default function Souvenir({ sessionId }: SouvenirProps) {
             />
           </g>
         ))}
-        </g>
       </svg>
     </main>
   );

@@ -6,6 +6,8 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
+const LAYER_REFERENCE_HEIGHT = 694;
+const TOP_LAYER_START = 405;
 
 type Group = "red" | "green" | "purple";
 type JourneyItem = {
@@ -346,7 +348,37 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
             <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
+          <filter id={`${filterId}-layer`} x="-5%" y="-5%" width="110%" height="115%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.32" numOctaves="2" seed="18" result="texture" />
+            <feColorMatrix in="texture" type="saturate" values="0" result="monoTexture" />
+            <feComposite in="monoTexture" in2="SourceAlpha" operator="in" result="maskedTexture" />
+            <feBlend in="SourceGraphic" in2="maskedTexture" mode="soft-light" result="texturedLayer" />
+            <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="shadowBlur" />
+            <feOffset in="shadowBlur" dy="8" result="shadowOffset" />
+            <feFlood floodColor="#000000" floodOpacity="0.38" result="shadowColor" />
+            <feComposite in="shadowColor" in2="shadowOffset" operator="in" result="shadow" />
+            <feMerge>
+              <feMergeNode in="shadow" />
+              <feMergeNode in="texturedLayer" />
+            </feMerge>
+          </filter>
+          <filter id={`${filterId}-panel`} x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000000" floodOpacity="0.55" />
+          </filter>
         </defs>
+        <image href="/bottom_layer.png" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none"
+          filter={`url(#${filterId}-layer)`} />
+        <image href="/top_layer.png" x="0" y={HEIGHT * TOP_LAYER_START / LAYER_REFERENCE_HEIGHT}
+          width={WIDTH} height={HEIGHT * (LAYER_REFERENCE_HEIGHT - TOP_LAYER_START) / LAYER_REFERENCE_HEIGHT}
+          preserveAspectRatio="none" filter={`url(#${filterId}-layer)`} />
+        <g pointerEvents="none">
+          <rect x="28" y="18" width={WIDTH * 0.42} height={HEIGHT * 0.21} fill="#f5f3ef" opacity="0.2" filter={`url(#${filterId}-panel)`} />
+          <rect x={WIDTH * 0.43} y="0" width={WIDTH * 0.45} height={HEIGHT * 0.19} fill="#5e5e5e" opacity="0.25" filter={`url(#${filterId}-panel)`} />
+          <rect x="0" y={HEIGHT * 0.22} width={WIDTH * 0.36} height={HEIGHT * 0.3} fill="#efede8" opacity="0.17" filter={`url(#${filterId}-panel)`} />
+          <rect x={WIDTH * 0.38} y={HEIGHT * 0.23} width={WIDTH * 0.49} height={HEIGHT * 0.22} fill="#777777" opacity="0.22" filter={`url(#${filterId}-panel)`} />
+          <rect x={WIDTH * 0.08} y={HEIGHT * 0.55} width={WIDTH * 0.39} height={HEIGHT * 0.3} fill="#faf8f2" opacity="0.13" filter={`url(#${filterId}-panel)`} />
+          <rect x={WIDTH * 0.56} y={HEIGHT * 0.49} width={WIDTH * 0.43} height={HEIGHT * 0.31} fill="#555555" opacity="0.2" filter={`url(#${filterId}-panel)`} />
+        </g>
         <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
         <g opacity={0.65} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
