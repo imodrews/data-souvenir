@@ -1,8 +1,32 @@
+@font-face {
+  font-family: "Neue Haas Grotesk Text";
+  src: url("/fonts/NeueHaasGroteskText-55Roman-Trial.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neue Haas Grotesk Display";
+  src: url("/fonts/NeueHaasGroteskDisplay-55Roman-Trial.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neue Haas Grotesk Display";
+  src: url("/fonts/NeueHaasGroteskDisplay-75Bold-Trial.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --background: #000;
   --foreground: #e1dfd2;
-  --font-heading: var(--font-sans);
-  --font-body: var(--font-sans);
+  --font-heading: "Neue Haas Grotesk Display";
+  --font-body: "Neue Haas Grotesk Text";
 }
 
 @media (prefers-color-scheme: dark) {
