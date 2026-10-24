@@ -6,6 +6,71 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
+const MODEL_WIDTH = 480.02;
+const MODEL_HEIGHT = 332;
+const MODEL_SCALE = (WIDTH / MODEL_WIDTH) * 1.08;
+const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
+const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2;
+const MODEL_RENDER_HEIGHT = MODEL_HEIGHT * MODEL_SCALE;
+const MODEL_TOP = HEIGHT - MODEL_RENDER_HEIGHT;
+
+type Coordinate = readonly [number, number];
+type ProjectionAnchor = readonly [number, number, number];
+
+function interpolateModelEdge(progress: number, anchors: readonly ProjectionAnchor[]) {
+  let endIndex = anchors.findIndex(([stop]) => progress <= stop);
+  if (endIndex < 1) endIndex = anchors.length - 1;
+  const [start, startX, startY] = anchors[endIndex - 1];
+  const [end, endX, endY] = anchors[endIndex];
+  const amount = (progress - start) / (end - start);
+  return {
+    x: startX + (endX - startX) * amount,
+    y: startY + (endY - startY) * amount,
+  };
+}
+
+function getModelPosition(floorX: number, floorY: number) {
+  const horizontal = Math.max(0, Math.min(1, floorX / 694));
+  const vertical = Math.max(0, Math.min(1, floorY / 231));
+  const top = interpolateModelEdge(horizontal, [
+    [0, 0.2, 61.82],
+    [0.38, 184.25, 0.47],
+    [1, 479.49, 111.64],
+  ]);
+  const bottom = interpolateModelEdge(horizontal, [
+    [0, 49.72, 230.57],
+    [0.46, 236.17, 331.53],
+    [1, 474.83, 243.13],
+  ]);
+  return {
+    x: MODEL_LEFT + (top.x + (bottom.x - top.x) * vertical) * MODEL_SCALE,
+    y: MODEL_TOP + (top.y + (bottom.y - top.y) * vertical) * MODEL_SCALE,
+  };
+}
+
+const MODEL_ENTRANCE_FLOOR: Coordinate = [694 * 0.46, 231];
+const MODEL_ENTRANCE_POSITION = getModelPosition(...MODEL_ENTRANCE_FLOOR);
+
+function getProjectedModelPath(points: readonly Coordinate[]) {
+  if (points.length < 2) return null;
+  const sampledPoints: Coordinate[] = [points[0]];
+  for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
+    const start = points[pointIndex - 1];
+    const end = points[pointIndex];
+    for (let sampleIndex = 1; sampleIndex <= 12; sampleIndex += 1) {
+      const progress = sampleIndex / 12;
+      sampledPoints.push([
+        start[0] + (end[0] - start[0]) * progress,
+        start[1] + (end[1] - start[1]) * progress,
+      ]);
+    }
+  }
+  const projectedPoints = sampledPoints.map(([floorX, floorY]) => {
+    const point = getModelPosition(floorX, floorY);
+    return [point.x, point.y] as [number, number];
+  });
+  return d3.line<[number, number]>().curve(d3.curveCatmullRom.alpha(0.5))(projectedPoints);
+}
 
 type Group = "red" | "green" | "purple";
 type JourneyItem = {
@@ -14,6 +79,8 @@ type JourneyItem = {
   name: string;
   artist: string;
   group: Group;
+  floorX: number;
+  floorY: number;
   x: number;
   y: number;
   encounterIndexes: number[];
@@ -122,7 +189,8 @@ type JourneyVisualisationProps = {
 
 export default function EndingVisualisation({ encounters, mode }: JourneyVisualisationProps) {
   const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"journey" | "grouping" | "labels" | "complete">("journey");
+  const [stage, setStage] = useState<"model" | "journey" | "grouping" | "labels" | "complete">("model");
+  const [modelProgress, setModelProgress] = useState(0);
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [groupingProgress, setGroupingProgress] = useState(0);
   const [labelsProgress, setLabelsProgress] = useState(0);
@@ -146,6 +214,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         uniqueArtworks.set(encounter.artworkId, {
           ...encounter,
           group: group === "green" ? "green" : group === "purple" || group === "blue" ? "purple" : "red",
+          floorX: Number(encounter.x),
+          floorY: Number(encounter.y),
           x: Number(encounter.x),
           y: 65 + (Number(encounter.y) / 231) * (HEIGHT - 130),
           encounterIndexes: [encounterIndex],
@@ -222,6 +292,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }, [items, journeyMarkSize, mode]);
 
   const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
+  const modelPositions = useMemo(() => new Map(items.map((item) => [
+    item.scanId,
+    getModelPosition(item.floorX, item.floorY),
+  ] as const)), [items]);
   const canvasHeight = useMemo(() => {
     if (mode === "live") return HEIGHT;
     const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
@@ -235,7 +309,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     if (mode === "live" || !positioned.length) return;
     let timeline: gsap.core.Timeline | undefined;
     const frame = requestAnimationFrame(() => {
-      setStage("journey");
+      setStage("model");
+      setModelProgress(0);
       setJourneyProgress(0);
       setGroupingProgress(0);
       setLabelsProgress(0);
@@ -244,13 +319,20 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setZoomProgress(0);
       zoomValue.current.value = 0;
       zoomTween.current?.kill();
-      const values = { journey: 0, grouping: 0, labels: 0 };
+      const values = { model: 0, journey: 0, grouping: 0, labels: 0 };
       timeline = gsap.timeline();
       timeline.to(values, {
         journey: encounterCount,
         duration: Math.max(1.2, encounterCount * 1.0),
         ease: "none",
         onUpdate: () => setJourneyProgress(values.journey),
+      });
+      timeline.call(() => setStage("journey"));
+      timeline.to(values, {
+        model: 1,
+        duration: 2.2,
+        ease: "power2.inOut",
+        onUpdate: () => setModelProgress(values.model),
       });
       if (mode === "final") {
         timeline.to({}, { duration: 0.6 });
@@ -298,22 +380,52 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }
 
   const displayedItems = useMemo(() => positioned.map((item) => {
-    if (mode === "live") return { ...item, size: journeyMarkSize };
+    if (mode === "live") return { ...item, size: journeyMarkSize, rotation: 0, flatness: 1 };
     const target = groupedLayout.get(item.scanId)!;
+    const modelPosition = modelPositions.get(item.scanId)!;
+    const itemIndex = positioned.findIndex((positionedItem) => positionedItem.scanId === item.scanId);
+    const stagger = positioned.length > 1 ? 0.38 * itemIndex / (positioned.length - 1) : 0;
+    const liftProgress = Math.max(0, Math.min(1, (modelProgress - stagger) / (1 - stagger)));
+    const journeyX = d3.interpolateNumber(modelPosition.x, item.x)(liftProgress);
+    const journeyY = d3.interpolateNumber(modelPosition.y, item.y)(liftProgress);
     return {
       ...item,
-      x: d3.interpolateNumber(item.x, target.x)(groupingProgress),
-      y: d3.interpolateNumber(item.y, target.y)(groupingProgress),
+      x: d3.interpolateNumber(journeyX, target.x)(groupingProgress),
+      y: d3.interpolateNumber(journeyY, target.y)(groupingProgress),
       size: d3.interpolateNumber(journeyMarkSize, target.size)(groupingProgress),
+      rotation: d3.interpolateNumber(-18, 0)(liftProgress),
+      flatness: d3.interpolateNumber(0.42, 1)(liftProgress),
     };
-  }), [positioned, groupedLayout, journeyMarkSize, groupingProgress, mode]);
+  }), [positioned, groupedLayout, modelPositions, journeyMarkSize, modelProgress, groupingProgress, mode]);
+  const modelPathSegments = useMemo(() => {
+    const encounterSequence = positioned
+      .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
+      .sort((first, second) => first.encounterIndex - second.encounterIndex);
+    const firstModelPoint: Coordinate | undefined = encounterSequence[0]
+      ? [encounterSequence[0].item.floorX, encounterSequence[0].item.floorY]
+      : undefined;
+    const entranceSegment = firstModelPoint
+      ? getProjectedModelPath([MODEL_ENTRANCE_FLOOR, firstModelPoint])
+      : null;
+    return [
+      ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
+      ...encounterSequence.slice(0, -1).flatMap((visit, index) => {
+        const next = encounterSequence[index + 1];
+        if (!next) return [];
+        const startPoint: Coordinate = [visit.item.floorX, visit.item.floorY];
+        const endPoint: Coordinate = [next.item.floorX, next.item.floorY];
+        const segment = getProjectedModelPath([startPoint, endPoint]);
+        return segment ? [{ d: segment, index: index + 1 }] : [];
+      }),
+    ];
+  }, [positioned]);
   const pathSegments = useMemo(() => {
     const encounterSequence = displayedItems
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
       .sort((first, second) => first.encounterIndex - second.encounterIndex);
     const entranceSegment = encounterSequence[0]
       ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-        .curve(d3.curveBumpY)([[WIDTH / 2, 32], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
+        .curve(d3.curveBumpY)([[MODEL_ENTRANCE_POSITION.x, MODEL_ENTRANCE_POSITION.y], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
       : null;
     return [
       ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
@@ -330,9 +442,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   if (!positioned.length) return <p>No artwork scans with positions found for this session.</p>;
 
   return (
-    <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: 620, margin: "0 auto" }}>
       <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#000", overflow: "hidden" }}
+        style={{ display: "block", width: "100%", height: "auto", background: "#000", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
@@ -347,9 +459,23 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        <image href="/3D-3.svg" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" />
-        <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
-        <g opacity={0.85} pointerEvents="none">
+        {mode === "final" && <image href="/3-D-10.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
+          preserveAspectRatio="none" opacity={1 - modelProgress} pointerEvents="none" />}
+        <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
+          pointerEvents="none">entrance</text>
+        <g opacity={mode === "final" ? (1 - modelProgress) * 0.85 : 0} pointerEvents="none">
+          <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
+            {modelPathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          </g>
+          <g filter={`url(#${filterId}-soft)`} opacity={0.45}>
+            {modelPathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={4} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          </g>
+          {modelPathSegments.map(({ d, index }) => <path key={`core-${index}`} d={d} fill="none" stroke="#e286bd" strokeWidth={2} strokeLinecap="round"
+            opacity={0.7} pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+        </g>
+        <g opacity={mode === "final" ? modelProgress * 0.85 : 0.85} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
@@ -373,7 +499,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           </g>;
         })}
         {displayedItems.map((item) => {
-          if (mode === "final" && stage === "journey" && visibleJourneyProgress < item.encounterIndexes[0] + 1) return null;
           const completedEncounters = item.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
           const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
           const active = selected === item.scanId;
@@ -389,8 +514,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/correct_color.png" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
-              width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" style={{ filter: `brightness(${brightness})` }} />
+            <g transform={`translate(${displayX} ${displayY}) rotate(${item.rotation}) scale(1 ${item.flatness})`}>
+              <image href="/svg-dot.svg" x={-displaySize * 0.825} y={-displaySize * 0.825}
+                width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
+                style={{ filter: `brightness(${brightness})` }} />
+            </g>
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
               fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
