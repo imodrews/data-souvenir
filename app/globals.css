@@ -23,7 +23,7 @@
 }
 
 :root {
-  --background: #000;
+  --background: #121212;
   --foreground: #e1dfd2;
   --font-heading: "Neue Haas Grotesk Display";
   --font-body: "Neue Haas Grotesk Text";
@@ -31,7 +31,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #000;
+    --background: #121212;
     --foreground: #e1dfd2;
   }
 }
