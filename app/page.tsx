@@ -89,9 +89,9 @@ export default function Home() {
                 <feGaussianBlur in="organic" stdDeviation="3" />
               </filter>
             </defs>
-            <g opacity="0.65">
-              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="10" strokeLinecap="round" opacity="0.2" filter="url(#welcome-trace-halo)" />
-              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#873c70" strokeWidth="5" strokeLinecap="round" opacity="0.22" filter="url(#welcome-trace-soft)" />
+            <g opacity="0.85">
+              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#c45b9c" strokeWidth="10" strokeLinecap="round" opacity="0.38" filter="url(#welcome-trace-halo)" />
+              <path className={styles.welcomeTrace} d="M 120 100 C 120 210 240 220 240 330 S 120 450 120 560" pathLength="1" fill="none" stroke="#c45b9c" strokeWidth="5" strokeLinecap="round" opacity="0.45" filter="url(#welcome-trace-soft)" />
             </g>
           </svg>
           <svg className={styles.welcomeDot} viewBox="0 0 180 180">

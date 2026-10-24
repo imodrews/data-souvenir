@@ -349,13 +349,13 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </defs>
         <image href="/3D-3.svg" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" />
         <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
-        <g opacity={0.65} pointerEvents="none">
-          <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={8} strokeLinecap="round"
+        <g opacity={0.85} pointerEvents="none">
+          <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
-          <g filter={`url(#${filterId}-soft)`} opacity={0.22}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={4} strokeLinecap="round"
+          <g filter={`url(#${filterId}-soft)`} opacity={0.45}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={4} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
         </g>
