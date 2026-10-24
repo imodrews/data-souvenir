@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 499.38 453.74">
   <defs>
+    <filter id="line-glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feFlood flood-color="#d96eae" flood-opacity="0.9" result="glow-color" />
+      <feComposite in="glow-color" in2="blur" operator="in" result="colored-glow" />
+      <feMerge>
+        <feMergeNode in="colored-glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
     <style>
       .cls-1 {
         fill: none;
@@ -9,7 +18,7 @@
       }
     </style>
   </defs>
-  <g id="Layer_1-2" data-name="Layer 1">
+  <g id="Layer_1-2" data-name="Layer 1" filter="url(#line-glow)">
     <line class="cls-1" x1="352.63" y1="106.75" x2="497.43" y2="453.24"/>
     <line class="cls-1" x1=".5" y1="453.24" x2="171.64" y2="106.75"/>
     <line class="cls-1" x1=".5" y1="106.75" x2="461.8" y2="106.75"/>
