@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "The kiosk could not be notified." }, { status: 503 });
   }
 
-  const visualisationUrl = new URL(`/souvenir/${sessionId}`, request.url).toString();
+  const visualisationUrl = new URL(`/ending-test/${sessionId}`, request.url).toString();
   return new Response(visualisationUrl, {
     headers: {
       "Cache-Control": "no-store",

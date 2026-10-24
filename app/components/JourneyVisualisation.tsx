@@ -3,29 +3,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import gsap from "gsap";
-import AnimatedMark from "./AnimatedMark";
 
 const WIDTH = 694;
-const HEIGHT = 231;
-const VIEW_WIDTH = HEIGHT;
-const VIEW_HEIGHT = WIDTH;
-const PANEL_LAYOUT = [
-  { x: 28, y: 0, width: 184, height: 26, fill: "#f5f3ef", opacity: 0.1 },
-  { x: 29, y: 28, width: 32, height: 154, fill: "#777777", opacity: 0.1 },
-  { x: 64, y: 28, width: 109, height: 72, fill: "#faf8f2", opacity: 0.12 },
-  { x: 176, y: 28, width: 35, height: 72, fill: "#5e5e5e", opacity: 0.11 },
-  { x: 64, y: 104, width: 136, height: 77, fill: "#efede8", opacity: 0.1 },
-  { x: 29, y: 186, width: 32, height: 88, fill: "#5e5e5e", opacity: 0.11 },
-  { x: 64, y: 186, width: 136, height: 87, fill: "#777777", opacity: 0.1 },
-  { x: 29, y: 278, width: 32, height: 124, fill: "#faf8f2", opacity: 0.1 },
-  { x: 64, y: 278, width: 109, height: 124, fill: "#f5f3ef", opacity: 0.1 },
-  { x: 176, y: 186, width: 35, height: 216, fill: "#5e5e5e", opacity: 0.09 },
-  { x: 30, y: 408, width: 192, height: 28, fill: "#efede8", opacity: 0.11 },
-  { x: 38, y: 440, width: 39, height: 176, fill: "#777777", opacity: 0.1 },
-  { x: 80, y: 440, width: 67, height: 176, fill: "#faf8f2", opacity: 0.12 },
-  { x: 150, y: 440, width: 64, height: 176, fill: "#5e5e5e", opacity: 0.1 },
-  { x: 30, y: 620, width: 192, height: 26, fill: "#f5f3ef", opacity: 0.1 },
-];
+const HEIGHT = 900;
+
 type Group = "red" | "green" | "purple";
 type JourneyItem = {
   scanId: string;
@@ -48,6 +29,92 @@ export type JourneyEncounter = {
   y: number | null;
 };
 
+const LABEL_FONT_SIZE = 20;
+const LABEL_LINE_HEIGHT = 28;
+const COLORS: Record<Group, string> = {
+  red: "#b85c5c",
+  green: "#5f8f68",
+  purple: "#8064a2",
+};
+const GROUP_LABELS: Record<Group, string> = {
+  red: "Sichtbarkeit des Ungesehenen, \u00bbNicht-Pr\u00e4senz\u00ab",
+  green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
+  purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
+};
+
+function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
+  const minX = Math.min(...section.map((item) => item.x - item.size / 2));
+  const maxX = Math.max(...section.map((item) => item.x + item.size / 2));
+  const minY = Math.min(...section.map((item) => item.y - item.size / 2));
+  const maxY = Math.max(...section.map((item) => item.y + item.size / 2));
+  const x = group === "green" ? maxX + 32 : 24;
+  const width = group === "green" ? WIDTH - 24 - x : minX - 32 - x;
+  const maxCharacters = Math.max(1, Math.floor(width / (LABEL_FONT_SIZE * 0.6)));
+  const lines: string[] = [];
+  let line = "";
+  for (const word of GROUP_LABELS[group].split(/\s+/)) {
+    if (line && line.length + word.length + 1 > maxCharacters) {
+      lines.push(line);
+      line = "";
+    }
+    let remaining = word;
+    while (remaining.length > maxCharacters) {
+      lines.push(remaining.slice(0, maxCharacters));
+      remaining = remaining.slice(maxCharacters);
+    }
+    line = line ? `${line} ${remaining}` : remaining;
+  }
+  if (line) lines.push(line);
+  const y = (minY + maxY) / 2 - (lines.length - 1) * LABEL_LINE_HEIGHT / 2 + 6;
+  return {
+    x, y, lines,
+    top: Math.min(minY, y - LABEL_FONT_SIZE),
+    bottom: Math.max(maxY, y + (lines.length - 1) * LABEL_LINE_HEIGHT + 8),
+  };
+}
+
+function getGroupedLayout(items: JourneyItem[], markSize: number) {
+  const targets = new Map<string, { x: number; y: number; size: number }>();
+  let nextTop = 64;
+  for (const group of ["green", "red", "purple"] as const) {
+    const section = items.filter((item) => item.group === group);
+    if (!section.length) continue;
+    const centreX = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
+    const centreY = (Math.min(...section.map((item) => item.y)) + Math.max(...section.map((item) => item.y))) / 2;
+    let contraction = 0.65;
+    for (let firstIndex = 0; firstIndex < section.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < section.length; secondIndex += 1) {
+        const distance = Math.hypot(section[firstIndex].x - section[secondIndex].x, section[firstIndex].y - section[secondIndex].y);
+        if (distance > 0) contraction = Math.max(contraction, (markSize * 0.82 + 6) / distance);
+      }
+    }
+    const compactSection = section.map((item) => ({
+      ...item,
+      x: centreX + (item.x - centreX) * contraction,
+      y: centreY + (item.y - centreY) * contraction,
+    }));
+    const minX = Math.min(...compactSection.map((item) => item.x)) - markSize / 2;
+    const maxX = Math.max(...compactSection.map((item) => item.x)) + markSize / 2;
+    const minY = Math.min(...compactSection.map((item) => item.y)) - markSize / 2;
+    const dotAreaWidth = WIDTH - 48 - 240 - 32;
+    const scale = Math.min(1, dotAreaWidth / (maxX - minX));
+    const left = group === "green" ? 24 : 24 + 240 + 32;
+    const fittedSection = compactSection.map((item) => ({
+      scanId: item.scanId,
+      x: left + (item.x - minX) * scale,
+      y: nextTop + (item.y - minY) * scale,
+      size: markSize * scale,
+    }));
+    const label = getGroupLabelLayout(fittedSection, group);
+    const offsetY = Math.max(0, nextTop - label.top);
+    for (const item of fittedSection) {
+      targets.set(item.scanId, { x: item.x, y: item.y + offsetY, size: item.size });
+    }
+    nextTop = label.bottom + offsetY + 48;
+  }
+  return targets;
+}
+
 type JourneyVisualisationProps = {
   encounters: JourneyEncounter[];
   mode: "live" | "final";
@@ -55,9 +122,12 @@ type JourneyVisualisationProps = {
 
 export default function JourneyVisualisation({ encounters, mode }: JourneyVisualisationProps) {
   const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"journey" | "complete">("complete");
+  const [stage, setStage] = useState<"journey" | "grouping" | "labels" | "complete">("journey");
   const [journeyProgress, setJourneyProgress] = useState(0);
+  const [groupingProgress, setGroupingProgress] = useState(0);
+  const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [zoomProgress, setZoomProgress] = useState(0);
   const [replayKey, setReplayKey] = useState(0);
   const zoomTween = useRef<gsap.core.Tween | null>(null);
@@ -77,7 +147,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           ...encounter,
           group: group === "green" ? "green" : group === "purple" || group === "blue" ? "purple" : "red",
           x: Number(encounter.x),
-          y: Number(encounter.y),
+          y: 65 + (Number(encounter.y) / 231) * (HEIGHT - 130),
           encounterIndexes: [encounterIndex],
         });
       }
@@ -88,16 +158,89 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
 
   const encounterCount = items.reduce((count, item) => count + item.encounterIndexes.length, 0);
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
-  const journeyMarkSize = Math.max(14, Math.min(30, 90 / Math.sqrt(items.length || 1)));
-  const positioned = useMemo(() => items, [items]);
-  const canvasHeight = VIEW_HEIGHT;
+  const journeyMarkSize = Math.max(110, Math.min(280, 420 / Math.sqrt(items.length || 1)));
+
+  const positioned = useMemo(() => {
+    const dataMinX = Math.min(...items.map((item) => item.x));
+    const dataMaxX = Math.max(...items.map((item) => item.x));
+    const dataMinY = Math.min(...items.map((item) => item.y));
+    const dataMaxY = Math.max(...items.map((item) => item.y));
+    const margin = Math.max(30, journeyMarkSize / 2 + 12);
+    const fitCoordinate = (value: number, min: number, max: number, extent: number) => {
+      if (max <= min) return extent / 2;
+      const fittedSpan = (extent - margin * 2) * 0.9;
+      return (extent - fittedSpan) / 2 + ((value - min) / (max - min)) * fittedSpan;
+    };
+    const purpleXCoordinates = items
+      .filter((item) => item.group === "purple")
+      .map((item) => fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH));
+    const purpleOffsetX = purpleXCoordinates.length
+      ? WIDTH / 2 - (Math.min(...purpleXCoordinates) + Math.max(...purpleXCoordinates)) / 2
+      : 0;
+    const journeyItems = items.map((item) => ({
+      ...item,
+      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
+      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT) + (mode === "final" && item.group === "purple" ? 55 : 0),
+    }));
+    const minCenterDistance = journeyMarkSize * 0.82 + 8;
+    const visibleHalfSize = journeyMarkSize * 0.82 / 2;
+    const minX = visibleHalfSize + 8;
+    const maxX = WIDTH - minX;
+    const minY = visibleHalfSize + 8;
+    const maxY = HEIGHT - minY;
+    for (let pass = 0; pass < 60; pass += 1) {
+      let moved = false;
+      for (let firstIndex = 0; firstIndex < journeyItems.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < journeyItems.length; secondIndex += 1) {
+          const first = journeyItems[firstIndex];
+          const second = journeyItems[secondIndex];
+          let dx = second.x - first.x;
+          let dy = second.y - first.y;
+          let distance = Math.hypot(dx, dy);
+          if (distance >= minCenterDistance) continue;
+          if (distance < 0.001) {
+            const angle = ((firstIndex + secondIndex) % 8) * (Math.PI / 4);
+            dx = Math.cos(angle);
+            dy = Math.sin(angle);
+            distance = 1;
+          }
+          const push = (minCenterDistance - distance) / 2;
+          first.x -= (dx / distance) * push;
+          first.y -= (dy / distance) * push;
+          second.x += (dx / distance) * push;
+          second.y += (dy / distance) * push;
+          moved = true;
+        }
+      }
+      journeyItems.forEach((item) => {
+        item.x = Math.max(minX, Math.min(maxX, item.x));
+        item.y = Math.max(minY, Math.min(maxY, item.y));
+      });
+      if (!moved) break;
+    }
+    return journeyItems;
+  }, [items, journeyMarkSize, mode]);
+
+  const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
+  const canvasHeight = useMemo(() => {
+    if (mode === "live") return HEIGHT;
+    const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
+      const section = positioned.filter((item) => item.group === group).map((item) => groupedLayout.get(item.scanId)!);
+      return section.length ? [getGroupLabelLayout(section, group).bottom + 24] : [];
+    });
+    return Math.max(HEIGHT, ...labelBottoms);
+  }, [groupedLayout, positioned, mode]);
 
   useEffect(() => {
     if (mode === "live" || !positioned.length) return;
     let timeline: gsap.core.Timeline | undefined;
     const frame = requestAnimationFrame(() => {
+      setStage("journey");
       setJourneyProgress(0);
+      setGroupingProgress(0);
+      setLabelsProgress(0);
       setSelected(null);
+      setHovered(null);
       setZoomProgress(0);
       zoomValue.current.value = 0;
       zoomTween.current?.kill();
@@ -109,6 +252,23 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
         ease: "none",
         onUpdate: () => setJourneyProgress(values.journey),
       });
+      if (mode === "final") {
+        timeline.to({}, { duration: 0.6 });
+        timeline.call(() => setStage("grouping"));
+        timeline.to(values, {
+          grouping: 1,
+          duration: 1.2,
+          ease: "power2.inOut",
+          onUpdate: () => setGroupingProgress(values.grouping),
+        });
+        timeline.call(() => setStage("labels"));
+        timeline.to(values, {
+          labels: 1,
+          duration: 0.8,
+          ease: "back.out(1.4)",
+          onUpdate: () => setLabelsProgress(values.labels),
+        });
+      }
       timeline.call(() => setStage("complete"));
     });
     return () => {
@@ -120,7 +280,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
   function enterOrExit(scanId: string) {
-    if (mode === "live") return;
+    if (mode === "live" || stage !== "complete") return;
     zoomTween.current?.kill();
     if (selected === scanId) {
       zoomTween.current = gsap.to(zoomValue.current, {
@@ -137,14 +297,23 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
     }
   }
 
-  const displayedItems = useMemo(() => positioned.map((item) => ({ ...item, size: journeyMarkSize })), [positioned, journeyMarkSize]);
+  const displayedItems = useMemo(() => positioned.map((item) => {
+    if (mode === "live") return { ...item, size: journeyMarkSize };
+    const target = groupedLayout.get(item.scanId)!;
+    return {
+      ...item,
+      x: d3.interpolateNumber(item.x, target.x)(groupingProgress),
+      y: d3.interpolateNumber(item.y, target.y)(groupingProgress),
+      size: d3.interpolateNumber(journeyMarkSize, target.size)(groupingProgress),
+    };
+  }), [positioned, groupedLayout, journeyMarkSize, groupingProgress, mode]);
   const pathSegments = useMemo(() => {
     const encounterSequence = displayedItems
     .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
     .sort((first, second) => first.encounterIndex - second.encounterIndex);
   const entranceSegment = encounterSequence[0]
     ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-      .curve(d3.curveBumpY)([[VIEW_WIDTH / 2, 0], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
+      .curve(d3.curveBumpY)([[WIDTH / 2, 32], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
     : null;
     return [
     ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
@@ -162,56 +331,24 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
 
   return (
     <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
-      <svg viewBox={`0 0 ${VIEW_WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: "min(900px, max(520px, calc(100dvh - 120px)))", background: "#000", overflow: "hidden" }}
+      <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
+        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#000", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
-          <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+          <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
             <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
             <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
             <feGaussianBlur in="organic" stdDeviation="9" />
           </filter>
-          <filter id={`${filterId}-soft`} x="0" y="0" width={WIDTH} height={HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+          <filter id={`${filterId}-soft`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
             <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
             <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
-          <filter id={`${filterId}-layer`} x="-5%" y="-5%" width="110%" height="115%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.32" numOctaves="2" seed="18" result="texture" />
-            <feColorMatrix in="texture" type="saturate" values="0" result="monoTexture" />
-            <feComposite in="monoTexture" in2="SourceAlpha" operator="in" result="maskedTexture" />
-            <feBlend in="SourceGraphic" in2="maskedTexture" mode="soft-light" result="texturedLayer" />
-            <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="shadowBlur" />
-            <feOffset in="shadowBlur" dy="8" result="shadowOffset" />
-            <feFlood floodColor="#000000" floodOpacity="0.38" result="shadowColor" />
-            <feComposite in="shadowColor" in2="shadowOffset" operator="in" result="shadow" />
-            <feMerge>
-              <feMergeNode in="shadow" />
-              <feMergeNode in="texturedLayer" />
-            </feMerge>
-          </filter>
-          <filter id={`${filterId}-panel`} x="-20%" y="-20%" width="140%" height="150%">
-            <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#000000" floodOpacity="0.55" />
-          </filter>
         </defs>
-        <image href="/bottom_layer.png" x="0" y="0" width={VIEW_WIDTH} height={VIEW_HEIGHT}
-          preserveAspectRatio="none" opacity="0.28" filter={`url(#${filterId}-layer)`} />
-        <image href="/top_layer.png" x="0" y="405" width={VIEW_WIDTH} height="289"
-          opacity="0.32" filter={`url(#${filterId}-layer)`} />
-        <g pointerEvents="none">
-          {PANEL_LAYOUT.map((panel, index) => <rect key={index}
-            x={panel.x}
-            y={panel.y}
-            width={panel.width}
-            height={panel.height}
-            fill={panel.fill}
-            opacity={panel.opacity}
-            stroke="#d8d5cf"
-            strokeOpacity="0.12"
-            strokeWidth="1"
-            filter={`url(#${filterId}-panel)`} />)}
-        </g>
+        <image href="/blueprint_2.svg" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" />
+        <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
         <g opacity={0.65} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={8} strokeLinecap="round"
@@ -222,19 +359,46 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
         </g>
-        {displayedItems.map((item) => {
-          const active = selected === item.scanId;
-          const displayX = active ? d3.interpolateNumber(item.x, VIEW_WIDTH / 2)(zoomProgress) : item.x;
-          const displayY = active ? d3.interpolateNumber(item.y, VIEW_HEIGHT / 2)(zoomProgress) : item.y;
-          const displaySize = active ? d3.interpolateNumber(item.size, VIEW_WIDTH * 0.8)(zoomProgress) : item.size;
-          return <g key={item.scanId} style={{ cursor: mode === "final" ? "pointer" : "default" }}
-            pointerEvents={selected && !active ? "none" : "auto"}
-            onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
-            <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <AnimatedMark x={displayX} y={displayY} size={displaySize} />
+        {mode === "final" && (["purple", "red", "green"] as const).map((group) => {
+          const section = displayedItems.filter((item) => item.group === group);
+          if (!section.length) return null;
+          const label = getGroupLabelLayout(section, group);
+          const labelProgress = Math.max(0, Math.min(1, labelsProgress));
+          const labelScale = 0.9 + labelProgress * 0.1;
+          return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
+            transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
+            <text x={label.x} y={label.y} textAnchor="start" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+              {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
+            </text>
           </g>;
         })}
-        <text x={VIEW_WIDTH / 2} y={14} textAnchor="middle" fill="#e1dfd2" fontSize="8" pointerEvents="none">entrance</text>
+        {displayedItems.map((item) => {
+          if (mode === "final" && stage === "journey" && visibleJourneyProgress < item.encounterIndexes[0] + 1) return null;
+          const completedEncounters = item.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
+          const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
+          const active = selected === item.scanId;
+          const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
+          const displayY = active ? d3.interpolateNumber(item.y, canvasHeight / 2)(zoomProgress) : item.y;
+          const displaySize = active ? d3.interpolateNumber(item.size, WIDTH * 0.9)(zoomProgress) : item.size;
+          const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
+          const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
+          return <g key={item.scanId} opacity={!selected || active ? 1 : 1 - zoomProgress}
+            style={{ cursor: mode === "final" && stage === "complete" ? "pointer" : "default" }}
+            pointerEvents={selected && !active ? "none" : "auto"}
+            onMouseEnter={() => { if (mode === "final" && stage === "complete") setHovered(item.scanId); }}
+            onMouseLeave={() => setHovered(null)}
+            onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
+            <title>{`${item.artist} \u2014 ${item.name}`}</title>
+            <image href="/correct_color.png" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
+              width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" style={{ filter: `brightness(${brightness})` }} />
+            <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
+            {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
+              fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
+              {item.artist}
+            </text>}
+          </g>;
+        })}
+        
       </svg>
       {mode === "final" && <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
         <button onClick={() => setReplayKey((value) => value + 1)}

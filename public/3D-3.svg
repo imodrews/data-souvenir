@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 499.38 453.74">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+        stroke: #3e0ad9;
+        stroke-miterlimit: 10;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1-2" data-name="Layer 1">
+    <line class="cls-1" x1="352.63" y1="106.75" x2="497.43" y2="453.24"/>
+    <line class="cls-1" x1=".5" y1="453.24" x2="171.64" y2="106.75"/>
+    <line class="cls-1" x1=".5" y1="106.75" x2="461.8" y2="106.75"/>
+    <line class="cls-1" x1=".5" y1="89.04" x2="497.43" y2="89.04"/>
+    <line class="cls-1" x1="434.12" y1=".5" x2="497.43" y2="89.04"/>
+    <line class="cls-1" x1=".5" y1="89.04" x2="56.46" y2=".5"/>
+    <line class="cls-1" x1="434.12" y1=".5" x2="56.46" y2=".5"/>
+    <line class="cls-1" x1="461.8" y1="106.75" x2="498.88" y2="106.75"/>
+    <line class="cls-1" x1=".5" y1="453.24" x2="497.43" y2="453.24"/>
+    <line class="cls-1" x1=".5" y1="89.04" x2=".5" y2="106.75"/>
+    <line class="cls-1" x1="497.43" y1="89.04" x2="498.88" y2="106.75"/>
+    <line class="cls-1" x1=".5" y1="106.75" x2=".5" y2="453.24"/>
+    <line class="cls-1" x1="498.88" y1="106.75" x2="497.43" y2="453.24"/>
+  </g>
+</svg>

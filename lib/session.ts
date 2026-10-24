@@ -63,5 +63,5 @@ export function finishVisit(sessionId: string) {
 }
 
 export function getFinalVisitPath(sessionId: string) {
-  return `/souvenir/${encodeURIComponent(sessionId)}`;
+  return `/ending-test/${encodeURIComponent(sessionId)}`;
 }

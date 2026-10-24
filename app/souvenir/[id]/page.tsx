@@ -1,1 +1,1 @@
-export { default } from "../../floor-test/[id]/page";
+export { default } from "../../ending-test/[id]/page";

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 export default function Navigation() {
   const pathname = usePathname();
-  const isFinalVisualisation = pathname.startsWith("/souvenir/") || pathname.startsWith("/floor-test/");
+  const isFinalVisualisation = pathname.startsWith("/souvenir/") || pathname.startsWith("/floor-test/") || pathname.startsWith("/ending-test/");
 
   return (
     <nav>

@@ -66,7 +66,7 @@ export default function BadgeDisplayPage() {
   }
 
   const visualizationUrl = sessionId
-    ? new URL(`/souvenir/${encodeURIComponent(sessionId)}`, SITE_ORIGIN).toString()
+    ? new URL(`/ending-test/${encodeURIComponent(sessionId)}`, SITE_ORIGIN).toString()
     : "";
 
   return (

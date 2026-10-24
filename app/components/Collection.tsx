@@ -149,7 +149,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
               <span>{artwork.title}</span>
             </li>)}
           </ol>
-          <Link className={styles.textLink} href={`/floor-test/${sessionId}`}>View my full souvenir</Link>
+          <Link className={styles.textLink} href={getFinalVisitPath(sessionId)}>View my full souvenir</Link>
         </>
       ) : <figure className={styles.empty}>
         <figcaption>
