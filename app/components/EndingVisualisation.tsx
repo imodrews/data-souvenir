@@ -347,7 +347,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        <image href="/3D-8.svg" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" />
+        <image href="/3D-3.svg" x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="none" />
         <text x={WIDTH / 2} y={16} textAnchor="middle" fill="#e1dfd2" fontSize="12" pointerEvents="none">entrance</text>
         <g opacity={0.65} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.2}>
