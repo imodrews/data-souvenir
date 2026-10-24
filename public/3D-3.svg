@@ -2,11 +2,15 @@
 <svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 499.38 453.74">
   <defs>
     <filter id="line-glow" x="-35%" y="-35%" width="170%" height="170%">
-      <feGaussianBlur stdDeviation="6" result="blur" />
-      <feFlood flood-color="#d96eae" flood-opacity="0.9" result="glow-color" />
-      <feComposite in="glow-color" in2="blur" operator="in" result="colored-glow" />
+      <feGaussianBlur stdDeviation="8" result="wide-blur" />
+      <feFlood flood-color="#d96eae" flood-opacity="0.75" result="wide-color" />
+      <feComposite in="wide-color" in2="wide-blur" operator="in" result="wide-glow" />
+      <feGaussianBlur stdDeviation="3" result="soft-blur" />
+      <feFlood flood-color="#d96eae" flood-opacity="0.95" result="soft-color" />
+      <feComposite in="soft-color" in2="soft-blur" operator="in" result="soft-glow" />
       <feMerge>
-        <feMergeNode in="colored-glow" />
+        <feMergeNode in="wide-glow" />
+        <feMergeNode in="soft-glow" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
@@ -14,7 +18,7 @@
       .cls-1 {
         fill: none;
         stroke: #3e0ad9;
-        stroke-opacity: 0.8;
+        stroke-opacity: 0.62;
         stroke-miterlimit: 10;
       }
     </style>
