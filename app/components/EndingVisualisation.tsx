@@ -6,9 +6,9 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
-const MODEL_WIDTH = 480.02;
-const MODEL_HEIGHT = 332;
-const MODEL_SCALE = (WIDTH / MODEL_WIDTH) * 1.08;
+const MODEL_WIDTH = 695.6;
+const MODEL_HEIGHT = 453.35;
+const MODEL_SCALE = (WIDTH / MODEL_WIDTH) * 2;
 const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
 const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2;
 const MODEL_RENDER_HEIGHT = MODEL_HEIGHT * MODEL_SCALE;
@@ -33,14 +33,14 @@ function getModelPosition(floorX: number, floorY: number) {
   const horizontal = Math.max(0, Math.min(1, floorX / 694));
   const vertical = Math.max(0, Math.min(1, floorY / 231));
   const top = interpolateModelEdge(horizontal, [
-    [0, 0.2, 61.82],
-    [0.38, 184.25, 0.47],
-    [1, 479.49, 111.64],
+    [0, 0.2, 66.02],
+    [0.38, 196.34, 0.46],
+    [1, 695.1, 221.01],
   ]);
   const bottom = interpolateModelEdge(horizontal, [
-    [0, 49.72, 230.57],
-    [0.46, 236.17, 331.53],
-    [1, 474.83, 243.13],
+    [0, 49.72, 234.76],
+    [0.46, 452.6, 452.91],
+    [1, 692.2, 363.4],
   ]);
   return {
     x: MODEL_LEFT + (top.x + (bottom.x - top.x) * vertical) * MODEL_SCALE,
@@ -292,10 +292,35 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }, [items, journeyMarkSize, mode]);
 
   const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
-  const modelPositions = useMemo(() => new Map(items.map((item) => [
-    item.scanId,
-    getModelPosition(item.floorX, item.floorY),
-  ] as const)), [items]);
+  const modelPositions = useMemo(() => {
+    const modelItems = items.map((item) => ({
+      ...item,
+      modelFloorX: item.floorX,
+      modelFloorY: item.floorY,
+    }));
+    const minHorizontalDistance = journeyMarkSize;
+    for (let pass = 0; pass < 60; pass += 1) {
+      let moved = false;
+      for (let firstIndex = 0; firstIndex < modelItems.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < modelItems.length; secondIndex += 1) {
+          const first = modelItems[firstIndex];
+          const second = modelItems[secondIndex];
+          const dx = second.modelFloorX - first.modelFloorX;
+          if (Math.abs(dx) >= minHorizontalDistance) continue;
+          const direction = dx === 0 ? (firstIndex % 2 === 0 ? 1 : -1) : Math.sign(dx);
+          const push = (minHorizontalDistance - Math.abs(dx)) / 2;
+          first.modelFloorX = Math.max(12, Math.min(682, first.modelFloorX - direction * push));
+          second.modelFloorX = Math.max(12, Math.min(682, second.modelFloorX + direction * push));
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    return new Map(modelItems.map((item) => [
+      item.scanId,
+      { ...getModelPosition(item.modelFloorX, item.modelFloorY), floorX: item.modelFloorX, floorY: item.modelFloorY },
+    ] as const));
+  }, [items, journeyMarkSize]);
   const canvasHeight = useMemo(() => {
     if (mode === "live") return HEIGHT;
     const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
@@ -392,7 +417,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       ...item,
       x: d3.interpolateNumber(journeyX, target.x)(groupingProgress),
       y: d3.interpolateNumber(journeyY, target.y)(groupingProgress),
-      size: d3.interpolateNumber(journeyMarkSize, target.size)(groupingProgress),
+      size: d3.interpolateNumber(journeyMarkSize * 0.85, target.size)(groupingProgress),
       rotation: d3.interpolateNumber(-18, 0)(liftProgress),
       flatness: d3.interpolateNumber(0.42, 1)(liftProgress),
     };
@@ -401,8 +426,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     const encounterSequence = positioned
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
       .sort((first, second) => first.encounterIndex - second.encounterIndex);
-    const firstModelPoint: Coordinate | undefined = encounterSequence[0]
-      ? [encounterSequence[0].item.floorX, encounterSequence[0].item.floorY]
+    const firstModelPosition = encounterSequence[0]
+      ? modelPositions.get(encounterSequence[0].item.scanId)
+      : undefined;
+    const firstModelPoint: Coordinate | undefined = firstModelPosition
+      ? [firstModelPosition.floorX, firstModelPosition.floorY]
       : undefined;
     const entranceSegment = firstModelPoint
       ? getProjectedModelPath([MODEL_ENTRANCE_FLOOR, firstModelPoint])
@@ -412,13 +440,15 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       ...encounterSequence.slice(0, -1).flatMap((visit, index) => {
         const next = encounterSequence[index + 1];
         if (!next) return [];
-        const startPoint: Coordinate = [visit.item.floorX, visit.item.floorY];
-        const endPoint: Coordinate = [next.item.floorX, next.item.floorY];
+        const startModelPosition = modelPositions.get(visit.item.scanId)!;
+        const endModelPosition = modelPositions.get(next.item.scanId)!;
+        const startPoint: Coordinate = [startModelPosition.floorX, startModelPosition.floorY];
+        const endPoint: Coordinate = [endModelPosition.floorX, endModelPosition.floorY];
         const segment = getProjectedModelPath([startPoint, endPoint]);
         return segment ? [{ d: segment, index: index + 1 }] : [];
       }),
     ];
-  }, [positioned]);
+  }, [positioned, modelPositions]);
   const pathSegments = useMemo(() => {
     const encounterSequence = displayedItems
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
@@ -442,9 +472,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   if (!positioned.length) return <p>No artwork scans with positions found for this session.</p>;
 
   return (
-    <div style={{ width: "100%", maxWidth: 620, margin: "0 auto" }}>
+    <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
       <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: "auto", background: "#000", overflow: "hidden" }}
+        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#000", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
@@ -459,7 +489,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        {mode === "final" && <image href="/3-D-10.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
+        {mode === "final" && <image href="/3-D-11.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
           preserveAspectRatio="none" opacity={1 - modelProgress} pointerEvents="none" />}
         <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
           pointerEvents="none">entrance</text>
