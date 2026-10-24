@@ -6,8 +6,8 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
-const MODEL_WIDTH = 695.6;
-const MODEL_HEIGHT = 453.35;
+const MODEL_WIDTH = 695.9;
+const MODEL_HEIGHT = 465.89;
 const MODEL_SCALE = (WIDTH / MODEL_WIDTH) * 2;
 const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
 const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2;
@@ -489,7 +489,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        {mode === "final" && <image href="/3-D-11.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
+        {mode === "final" && <image href="/3-D-12.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
           preserveAspectRatio="none" opacity={1 - modelProgress} pointerEvents="none" />}
         <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
           pointerEvents="none">entrance</text>
