@@ -427,7 +427,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   return (
     <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
       <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: `calc(min(742px, calc(100dvh - 220px)) * ${canvasHeight / HEIGHT})`, background: "#000", overflow: "hidden" }}
+        style={{ display: "block", width: "100%", height: "auto", aspectRatio: `${WIDTH} / ${canvasHeight}`, background: "#000", overflow: "hidden" }}
         onClick={() => { if (selected) enterOrExit(selected); }}
         aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
         <defs>
