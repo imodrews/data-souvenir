@@ -165,7 +165,7 @@ type JourneyVisualisationProps = {
 
 export default function EndingVisualisation({ encounters, mode }: JourneyVisualisationProps) {
   const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"model" | "journey" | "grouping" | "labels" | "complete">("model");
+  const [stage, setStage] = useState<"model" | "journey" | "grouping" | "complete">("model");
   const [modelProgress, setModelProgress] = useState(0);
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [groupingProgress, setGroupingProgress] = useState(0);
@@ -322,7 +322,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setZoomProgress(0);
       zoomValue.current.value = 0;
       zoomTween.current?.kill();
-      const values = { model: 0, journey: 0, grouping: 0, labels: 0 };
+      const values = { model: 0, journey: 0, grouping: 0 };
       timeline = gsap.timeline();
       timeline.to(values, {
         journey: encounterCount,
@@ -344,14 +344,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           grouping: 1,
           duration: 1.2,
           ease: "power2.inOut",
-          onUpdate: () => setGroupingProgress(values.grouping),
-        });
-        timeline.call(() => setStage("labels"));
-        timeline.to(values, {
-          labels: 1,
-          duration: 0.8,
-          ease: "back.out(1.4)",
-          onUpdate: () => setLabelsProgress(values.labels),
+          onUpdate: () => {
+            setGroupingProgress(values.grouping);
+            setLabelsProgress(values.grouping);
+          },
         });
       }
       timeline.call(() => setStage("complete"));
