@@ -13,6 +13,7 @@ const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
 const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2 + WIDTH * 0.35;
 const MODEL_RENDER_HEIGHT = MODEL_HEIGHT * MODEL_SCALE;
 const MODEL_TOP = HEIGHT - MODEL_RENDER_HEIGHT;
+const MODEL_FADE_START = 0.65;
 
 type Coordinate = readonly [number, number];
 type ProjectionAnchor = readonly [number, number, number];
@@ -50,27 +51,6 @@ function getModelPosition(floorX: number, floorY: number) {
 
 const MODEL_ENTRANCE_FLOOR: Coordinate = [694 * 0.46, 231];
 const MODEL_ENTRANCE_POSITION = getModelPosition(...MODEL_ENTRANCE_FLOOR);
-
-function getProjectedModelPath(points: readonly Coordinate[]) {
-  if (points.length < 2) return null;
-  const sampledPoints: Coordinate[] = [points[0]];
-  for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
-    const start = points[pointIndex - 1];
-    const end = points[pointIndex];
-    for (let sampleIndex = 1; sampleIndex <= 12; sampleIndex += 1) {
-      const progress = sampleIndex / 12;
-      sampledPoints.push([
-        start[0] + (end[0] - start[0]) * progress,
-        start[1] + (end[1] - start[1]) * progress,
-      ]);
-    }
-  }
-  const projectedPoints = sampledPoints.map(([floorX, floorY]) => {
-    const point = getModelPosition(floorX, floorY);
-    return [point.x, point.y] as [number, number];
-  });
-  return d3.line<[number, number]>().curve(d3.curveCatmullRom.alpha(0.5))(projectedPoints);
-}
 
 type Group = "red" | "green" | "purple";
 type JourneyItem = {
@@ -228,6 +208,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
   const encounterCount = items.reduce((count, item) => count + item.encounterIndexes.length, 0);
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
+  const modelFadeProgress = Math.max(0, Math.min(1, (modelProgress - MODEL_FADE_START) / (1 - MODEL_FADE_START)));
+  const modelFadeOpacity = 1 - modelFadeProgress;
   const journeyMarkSize = Math.max(110, Math.min(280, 420 / Math.sqrt(items.length || 1)));
 
   const positioned = useMemo(() => {
@@ -405,7 +387,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }
 
   const displayedItems = useMemo(() => positioned.map((item) => {
-    if (mode === "live") return { ...item, size: journeyMarkSize, rotation: 0, flatness: 1 };
+    if (mode === "live") return { ...item, size: journeyMarkSize };
     const target = groupedLayout.get(item.scanId)!;
     const modelPosition = modelPositions.get(item.scanId)!;
     const itemIndex = positioned.findIndex((positionedItem) => positionedItem.scanId === item.scanId);
@@ -417,38 +399,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       ...item,
       x: d3.interpolateNumber(journeyX, target.x)(groupingProgress),
       y: d3.interpolateNumber(journeyY, target.y)(groupingProgress),
-      size: d3.interpolateNumber(journeyMarkSize * 0.85, target.size)(groupingProgress),
-      rotation: d3.interpolateNumber(-18, 0)(liftProgress),
-      flatness: d3.interpolateNumber(0.42, 1)(liftProgress),
+      size: d3.interpolateNumber(journeyMarkSize * 0.4, target.size)(groupingProgress),
     };
   }), [positioned, groupedLayout, modelPositions, journeyMarkSize, modelProgress, groupingProgress, mode]);
-  const modelPathSegments = useMemo(() => {
-    const encounterSequence = positioned
-      .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
-      .sort((first, second) => first.encounterIndex - second.encounterIndex);
-    const firstModelPosition = encounterSequence[0]
-      ? modelPositions.get(encounterSequence[0].item.scanId)
-      : undefined;
-    const firstModelPoint: Coordinate | undefined = firstModelPosition
-      ? [firstModelPosition.floorX, firstModelPosition.floorY]
-      : undefined;
-    const entranceSegment = firstModelPoint
-      ? getProjectedModelPath([MODEL_ENTRANCE_FLOOR, firstModelPoint])
-      : null;
-    return [
-      ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
-      ...encounterSequence.slice(0, -1).flatMap((visit, index) => {
-        const next = encounterSequence[index + 1];
-        if (!next) return [];
-        const startModelPosition = modelPositions.get(visit.item.scanId)!;
-        const endModelPosition = modelPositions.get(next.item.scanId)!;
-        const startPoint: Coordinate = [startModelPosition.floorX, startModelPosition.floorY];
-        const endPoint: Coordinate = [endModelPosition.floorX, endModelPosition.floorY];
-        const segment = getProjectedModelPath([startPoint, endPoint]);
-        return segment ? [{ d: segment, index: index + 1 }] : [];
-      }),
-    ];
-  }, [positioned, modelPositions]);
   const pathSegments = useMemo(() => {
     const encounterSequence = displayedItems
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
@@ -489,23 +442,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        {mode === "final" && <image href="/3-D-12.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
-          preserveAspectRatio="none" opacity={1 - modelProgress} pointerEvents="none" />}
+        {mode === "final" && <image href="/3-D-14.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
+          preserveAspectRatio="none" opacity={modelFadeOpacity} pointerEvents="none" />}
         <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
           pointerEvents="none">entrance</text>
-        <g opacity={mode === "final" ? (1 - modelProgress) * 0.85 : 0} pointerEvents="none">
-          <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
-            {modelPathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
-          </g>
-          <g filter={`url(#${filterId}-soft)`} opacity={0.45}>
-            {modelPathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={4} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
-          </g>
-          {modelPathSegments.map(({ d, index }) => <path key={`core-${index}`} d={d} fill="none" stroke="#e286bd" strokeWidth={2} strokeLinecap="round"
-            opacity={0.7} pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
-        </g>
-        <g opacity={mode === "final" ? modelProgress * 0.85 : 0.85} pointerEvents="none">
+        <g opacity={0.85} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
@@ -544,11 +485,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <g transform={`translate(${displayX} ${displayY}) rotate(${item.rotation}) scale(1 ${item.flatness})`}>
-              <image href="/svg-dot.svg" x={-displaySize * 0.825} y={-displaySize * 0.825}
-                width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
-                style={{ filter: `brightness(${brightness})` }} />
-            </g>
+            <image href="/svg-dot.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
+              width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
+              style={{ filter: `brightness(${brightness})` }} />
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
               fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
