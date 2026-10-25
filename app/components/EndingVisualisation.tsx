@@ -182,11 +182,17 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     const purpleOffsetX = purpleXCoordinates.length
       ? WIDTH / 2 - (Math.min(...purpleXCoordinates) + Math.max(...purpleXCoordinates)) / 2
       : 0;
-    const journeyItems = items.map((item) => ({
-      ...item,
-      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
-      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT) + (mode === "final" && item.group === "purple" ? 55 : 0),
-    }));
+    const journeyItems = items.map((item) => {
+      const liftBackLeftRedDot = mode === "final" && item.group === "red"
+        && item.floorX >= 45 && item.floorX <= 70 && item.floorY >= 190 && item.floorY <= 205;
+      return {
+        ...item,
+        x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
+        y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT)
+          + (mode === "final" && item.group === "purple" ? 55 : 0)
+          - (liftBackLeftRedDot ? 35 : 0),
+      };
+    });
     const minCenterDistance = journeyMarkSize * 0.82 + 8;
     const visibleHalfSize = journeyMarkSize * 0.82 / 2;
     const minX = visibleHalfSize + 8;
@@ -325,8 +331,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }
 
   const displayedItems = useMemo(() => positioned.map((item) => {
-    if (mode === "live") return { ...item, size: journeyMarkSize };
     const modelPosition = modelPositions.get(item.scanId)!;
+    if (mode === "live") {
+      return { ...item, x: modelPosition.x, y: modelPosition.y, size: journeyMarkSize * 0.4 };
+    }
     const itemIndex = positioned.findIndex((positionedItem) => positionedItem.scanId === item.scanId);
     const stagger = positioned.length > 1 ? 0.38 * itemIndex / (positioned.length - 1) : 0;
     const liftProgress = Math.max(0, Math.min(1, (modelProgress - stagger) / (1 - stagger)));
@@ -379,8 +387,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur in="organic" stdDeviation="3" />
           </filter>
         </defs>
-        {mode === "final" && <image href="/3-D-14.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
-          preserveAspectRatio="none" opacity={modelFadeOpacity} pointerEvents="none" />}
+        <image href="/3-D-14.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
+          preserveAspectRatio="none" opacity={mode === "final" ? modelFadeOpacity : 1} pointerEvents="none" />
         <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
           pointerEvents="none">entrance</text>
         <g opacity={0.85} pointerEvents="none">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "../../lib/supabase/client";
 import { getFinalVisitPath, isVisitFinished } from "../../lib/session";
 import type { Artwork } from "../../types/artwork";
-import JourneyVisualisation, { type JourneyEncounter } from "./JourneyVisualisation";
+import EndingVisualisation, { type JourneyEncounter } from "./EndingVisualisation";
 import styles from "../page.module.css";
 
 type CollectedArtist = { name: string; curatorial_group: string | null };
@@ -138,7 +138,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
       </div>
       {artworks.length ? (
         <>
-          <JourneyVisualisation encounters={journeyEncounters} mode="live" />
+          <EndingVisualisation encounters={journeyEncounters} mode="live" />
           {current && (current.material_eng || current.text_eng) && <section className={styles.artworkDetails} aria-label="Artwork details">
             {current.material_eng && <p className={styles.note}>{current.material_eng}</p>}
             {current.text_eng && <p className={styles.description}>{current.text_eng}</p>}
