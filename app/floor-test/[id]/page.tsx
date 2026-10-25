@@ -79,7 +79,7 @@ export default function FloorTestPage() {
   const artworkCount = new Set(encounters.map((encounter) => encounter.artworkId)).size;
 
   return (
-    <main style={{ minHeight: "100vh", padding: "28px 18px", background: "#000", color: "#e1dfd2" }}>
+    <main style={{ minHeight: "100vh", padding: "28px 18px", background: "var(--background)", color: "#e1dfd2" }}>
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
         <h1 style={{ fontWeight: 400 }}>Your exhibition constellation</h1>
         <p style={{ fontSize: 13, opacity: 0.65 }}>{"\u00b7 "}{artworkCount} artists collected</p>

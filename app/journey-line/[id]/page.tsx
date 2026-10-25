@@ -315,7 +315,7 @@ export default function JourneyLinePage() {
   const activeArtist = layout.placed.find((artist) => artist.id === selected);
 
   return (
-    <main style={{ minHeight: "100vh", background: "#000", color: "#e1dfd2", padding: "28px 18px" }}>
+    <main style={{ minHeight: "100vh", background: "var(--background)", color: "#e1dfd2", padding: "28px 18px" }}>
       <div style={{ maxWidth: 850, margin: "0 auto" }}>
         <h1 style={{ fontWeight: 400, marginBottom: 6 }}>
           Your exhibition journey

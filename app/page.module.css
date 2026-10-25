@@ -118,8 +118,8 @@
 }
 
 .page {
-  --background: #000;
-  --foreground: #fff;
+  --background: #141312;
+  --foreground: #e1dfd2;
 
   --text-primary: var(--foreground);
   --text-secondary: var(--foreground);
@@ -248,8 +248,8 @@ a.secondary {
   }
 
   .page {
-    --background: #000;
-    --foreground: #000;
+    --background: #141312;
+    --foreground: #e1dfd2;
 
     --text-primary: var(--foreground);
     --text-secondary: var(--foreground);

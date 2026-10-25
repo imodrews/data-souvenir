@@ -217,7 +217,7 @@ export default function PackingTestPage() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#000",
+        background: "var(--background)",
         padding: "40px 20px",
       }}
     >

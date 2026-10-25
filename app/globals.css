@@ -23,7 +23,7 @@
 }
 
 :root {
-  --background: #121212;
+  --background: #141312;
   --foreground: #e1dfd2;
   --font-heading: "Neue Haas Grotesk Display";
   --font-body: "Neue Haas Grotesk Text";
@@ -31,7 +31,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #121212;
+    --background: #141312;
     --foreground: #e1dfd2;
   }
 }
@@ -58,16 +58,6 @@ body {
   font-style: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-body::after {
-  position: fixed;
-  z-index: 1000;
-  inset: 0;
-  pointer-events: none;
-  content: "";
-  opacity: 0.3;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E");
 }
 
 * {
