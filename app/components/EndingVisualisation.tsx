@@ -84,15 +84,16 @@ const GROUP_LABELS: Record<Group, string> = {
   green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
   purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
 };
+const GROUP_ORDER: readonly Group[] = ["red", "green", "purple"];
+const GROUP_VERTICAL_OFFSETS: Record<Group, number> = { red: -40, green: 0, purple: 40 };
 
 function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
-  const minX = Math.min(...section.map((item) => item.x - item.size / 2));
-  const maxX = Math.max(...section.map((item) => item.x + item.size / 2));
-  const minY = Math.min(...section.map((item) => item.y - item.size / 2));
-  const maxY = Math.max(...section.map((item) => item.y + item.size / 2));
-  const x = group === "green" ? maxX + 32 : 24;
-  const width = group === "green" ? WIDTH - 24 - x : minX - 32 - x;
-  const maxCharacters = Math.max(1, Math.floor(width / (LABEL_FONT_SIZE * 0.6)));
+  const minX = Math.min(...section.map((item) => item.x - item.size * 0.825));
+  const maxX = Math.max(...section.map((item) => item.x + item.size * 0.825));
+  const minY = Math.min(...section.map((item) => item.y - item.size * 0.825));
+  const maxY = Math.max(...section.map((item) => item.y + item.size * 0.825));
+  const x = (minX + maxX) / 2;
+  const maxCharacters = Math.max(1, Math.floor((WIDTH - 48) / (LABEL_FONT_SIZE * 0.6)));
   const lines: string[] = [];
   let line = "";
   for (const word of GROUP_LABELS[group].split(/\s+/)) {
@@ -108,7 +109,7 @@ function getGroupLabelLayout(section: { x: number; y: number; size: number }[], 
     line = line ? `${line} ${remaining}` : remaining;
   }
   if (line) lines.push(line);
-  const y = (minY + maxY) / 2 - (lines.length - 1) * LABEL_LINE_HEIGHT / 2 + 6;
+  const y = minY - 12 - (lines.length - 1) * LABEL_LINE_HEIGHT;
   return {
     x, y, lines,
     top: Math.min(minY, y - LABEL_FONT_SIZE),
@@ -182,17 +183,13 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     const purpleOffsetX = purpleXCoordinates.length
       ? WIDTH / 2 - (Math.min(...purpleXCoordinates) + Math.max(...purpleXCoordinates)) / 2
       : 0;
-    const journeyItems = items.map((item) => {
-      const liftBackLeftRedDot = mode === "final" && item.group === "red"
-        && item.floorX >= 45 && item.floorX <= 70 && item.floorY >= 190 && item.floorY <= 205;
-      return {
-        ...item,
-        x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
-        y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT)
-          + (mode === "final" && item.group === "purple" ? 55 : 0)
-          - (liftBackLeftRedDot ? 35 : 0),
-      };
-    });
+    const journeyItems = items.map((item) => ({
+      ...item,
+      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
+      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT)
+        + (mode === "final" && item.group === "purple" ? 55 : 0)
+        + (mode === "final" ? GROUP_VERTICAL_OFFSETS[item.group] : 0),
+    }));
     const minCenterDistance = journeyMarkSize * 0.82 + 8;
     const visibleHalfSize = journeyMarkSize * 0.82 / 2;
     const minX = visibleHalfSize + 8;
@@ -263,16 +260,17 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }, [items, journeyMarkSize]);
   const canvasHeight = useMemo(() => {
     if (mode === "live") return HEIGHT;
-    const labelItems = positioned.map((item) => ({ ...item, size: journeyMarkSize * 0.4 }));
-    const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
-      const section = labelItems.filter((item) => item.group === group);
+    const groupBottoms = GROUP_ORDER.flatMap((group) => {
+      const section = positioned
+        .filter((item) => item.group === group)
+        .map((item) => ({ ...item, size: journeyMarkSize * 0.4 }));
       return section.length ? [getGroupLabelLayout(section, group).bottom + 24] : [];
     });
-    return Math.max(HEIGHT, ...labelBottoms);
+    return Math.max(HEIGHT, ...groupBottoms);
   }, [positioned, journeyMarkSize, mode]);
 
   useEffect(() => {
-    if (mode === "live" || !positioned.length) return;
+    if (mode === "live" || !items.length) return;
     let timeline: gsap.core.Timeline | undefined;
     const frame = requestAnimationFrame(() => {
       setStage("model");
@@ -308,7 +306,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       cancelAnimationFrame(frame);
       timeline?.kill();
     };
-  }, [positioned, encounterCount, replayKey, mode]);
+  }, [items, encounterCount, replayKey, mode]);
 
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
@@ -367,7 +365,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     ];
   }, [displayedItems]);
 
-  if (!positioned.length) return <p>No artwork scans with positions found for this session.</p>;
+  if (!items.length) return <p>No artwork scans with positions found for this session.</p>;
 
   return (
     <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
@@ -401,7 +399,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
         </g>
-        {mode === "final" && (["purple", "red", "green"] as const).map((group) => {
+        {mode === "final" && GROUP_ORDER.map((group) => {
           const section = displayedItems.filter((item) => item.group === group);
           if (!section.length) return null;
           const label = getGroupLabelLayout(section, group);
@@ -409,7 +407,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const labelScale = 0.9 + labelProgress * 0.1;
           return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
             transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
-            <text x={label.x} y={label.y} textAnchor="start" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+            <text x={label.x} y={label.y} textAnchor="middle" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
               {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
             </text>
           </g>;
