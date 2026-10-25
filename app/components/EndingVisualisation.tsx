@@ -6,8 +6,8 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
-const MODEL_WIDTH = 695.9;
-const MODEL_HEIGHT = 465.89;
+const MODEL_WIDTH = 540.47;
+const MODEL_HEIGHT = 486.16;
 const MODEL_SCALE = WIDTH / MODEL_WIDTH;
 const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
 const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2;
@@ -16,36 +16,32 @@ const MODEL_TOP = Math.min(110, HEIGHT - MODEL_RENDER_HEIGHT);
 const MODEL_FADE_START = 0.65;
 
 type Coordinate = readonly [number, number];
-type ProjectionAnchor = readonly [number, number, number];
+type FloorProjectionRow = readonly [floorY: number, left: Coordinate, right: Coordinate];
 
-function interpolateModelEdge(progress: number, anchors: readonly ProjectionAnchor[]) {
-  let endIndex = anchors.findIndex(([stop]) => progress <= stop);
-  if (endIndex < 1) endIndex = anchors.length - 1;
-  const [start, startX, startY] = anchors[endIndex - 1];
-  const [end, endX, endY] = anchors[endIndex];
-  const amount = (progress - start) / (end - start);
-  return {
-    x: startX + (endX - startX) * amount,
-    y: startY + (endY - startY) * amount,
-  };
-}
+const MODEL_FLOOR_ROWS: readonly FloorProjectionRow[] = [
+  [0, [131.91, 39.63], [438.31, 53.79]],
+  [48, [105.38, 99.23], [449.62, 115.71]],
+  [184, [128.14, 167.13], [444.29, 181.13]],
+  [231, [0.23, 456.55], [509.28, 485.91]],
+];
 
 function getModelPosition(floorX: number, floorY: number) {
   const horizontal = Math.max(0, Math.min(1, floorX / 694));
-  const vertical = Math.max(0, Math.min(1, floorY / 231));
-  const top = interpolateModelEdge(horizontal, [
-    [0, 0.2, 66.02],
-    [0.38, 196.34, 0.46],
-    [1, 695.1, 221.01],
-  ]);
-  const bottom = interpolateModelEdge(horizontal, [
-    [0, 49.72, 234.76],
-    [0.46, 452.6, 452.91],
-    [1, 692.2, 363.4],
-  ]);
+  const clampedFloorY = Math.max(0, Math.min(231, floorY));
+  let endRowIndex = MODEL_FLOOR_ROWS.findIndex(([rowY]) => clampedFloorY <= rowY);
+  if (endRowIndex < 1) endRowIndex = MODEL_FLOOR_ROWS.length - 1;
+  const [startY, startLeft, startRight] = MODEL_FLOOR_ROWS[endRowIndex - 1];
+  const [endY, endLeft, endRight] = MODEL_FLOOR_ROWS[endRowIndex];
+  const vertical = (clampedFloorY - startY) / (endY - startY);
+  const interpolateRow = (left: Coordinate, right: Coordinate): Coordinate => [
+    left[0] + (right[0] - left[0]) * horizontal,
+    left[1] + (right[1] - left[1]) * horizontal,
+  ];
+  const top = interpolateRow(startLeft, startRight);
+  const bottom = interpolateRow(endLeft, endRight);
   return {
-    x: MODEL_LEFT + (top.x + (bottom.x - top.x) * vertical) * MODEL_SCALE,
-    y: MODEL_TOP + (top.y + (bottom.y - top.y) * vertical) * MODEL_SCALE,
+    x: MODEL_LEFT + (top[0] + (bottom[0] - top[0]) * vertical) * MODEL_SCALE,
+    y: MODEL_TOP + (top[1] + (bottom[1] - top[1]) * vertical) * MODEL_SCALE,
   };
 }
 
