@@ -164,7 +164,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
   const modelFadeProgress = Math.max(0, Math.min(1, (modelProgress - MODEL_FADE_START) / (1 - MODEL_FADE_START)));
   const modelFadeOpacity = 1 - modelFadeProgress;
-  const journeyMarkSize = Math.max(110, Math.min(280, 420 / Math.sqrt(items.length || 1)));
+  const journeyMarkSize = 140;
 
   const positioned = useMemo(() => {
     const dataMinX = Math.min(...items.map((item) => item.x));
