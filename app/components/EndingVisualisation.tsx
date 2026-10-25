@@ -116,48 +116,6 @@ function getGroupLabelLayout(section: { x: number; y: number; size: number }[], 
   };
 }
 
-function getGroupedLayout(items: JourneyItem[], markSize: number) {
-  const targets = new Map<string, { x: number; y: number; size: number }>();
-  let nextTop = 64;
-  for (const group of ["green", "red", "purple"] as const) {
-    const section = items.filter((item) => item.group === group);
-    if (!section.length) continue;
-    const centreX = (Math.min(...section.map((item) => item.x)) + Math.max(...section.map((item) => item.x))) / 2;
-    const centreY = (Math.min(...section.map((item) => item.y)) + Math.max(...section.map((item) => item.y))) / 2;
-    let contraction = 0.65;
-    for (let firstIndex = 0; firstIndex < section.length; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < section.length; secondIndex += 1) {
-        const distance = Math.hypot(section[firstIndex].x - section[secondIndex].x, section[firstIndex].y - section[secondIndex].y);
-        if (distance > 0) contraction = Math.max(contraction, (markSize * 0.82 + 6) / distance);
-      }
-    }
-    const compactSection = section.map((item) => ({
-      ...item,
-      x: centreX + (item.x - centreX) * contraction,
-      y: centreY + (item.y - centreY) * contraction,
-    }));
-    const minX = Math.min(...compactSection.map((item) => item.x)) - markSize / 2;
-    const maxX = Math.max(...compactSection.map((item) => item.x)) + markSize / 2;
-    const minY = Math.min(...compactSection.map((item) => item.y)) - markSize / 2;
-    const dotAreaWidth = WIDTH - 48 - 240 - 32;
-    const scale = Math.min(1, dotAreaWidth / (maxX - minX));
-    const left = group === "green" ? 24 : 24 + 240 + 32;
-    const fittedSection = compactSection.map((item) => ({
-      scanId: item.scanId,
-      x: left + (item.x - minX) * scale,
-      y: nextTop + (item.y - minY) * scale,
-      size: markSize * scale,
-    }));
-    const label = getGroupLabelLayout(fittedSection, group);
-    const offsetY = Math.max(0, nextTop - label.top);
-    for (const item of fittedSection) {
-      targets.set(item.scanId, { x: item.x, y: item.y + offsetY, size: item.size });
-    }
-    nextTop = label.bottom + offsetY + 48;
-  }
-  return targets;
-}
-
 type JourneyVisualisationProps = {
   encounters: JourneyEncounter[];
   mode: "live" | "final";
@@ -165,10 +123,9 @@ type JourneyVisualisationProps = {
 
 export default function EndingVisualisation({ encounters, mode }: JourneyVisualisationProps) {
   const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"model" | "journey" | "grouping" | "complete">("model");
+  const [stage, setStage] = useState<"model" | "journey" | "complete">("model");
   const [modelProgress, setModelProgress] = useState(0);
   const [journeyProgress, setJourneyProgress] = useState(0);
-  const [groupingProgress, setGroupingProgress] = useState(0);
   const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -269,7 +226,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     return journeyItems;
   }, [items, journeyMarkSize, mode]);
 
-  const groupedLayout = useMemo(() => getGroupedLayout(positioned, journeyMarkSize), [positioned, journeyMarkSize]);
   const modelPositions = useMemo(() => {
     const modelItems = items.map((item) => ({
       ...item,
@@ -301,12 +257,13 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }, [items, journeyMarkSize]);
   const canvasHeight = useMemo(() => {
     if (mode === "live") return HEIGHT;
+    const labelItems = positioned.map((item) => ({ ...item, size: journeyMarkSize * 0.4 }));
     const labelBottoms = (["green", "red", "purple"] as const).flatMap((group) => {
-      const section = positioned.filter((item) => item.group === group).map((item) => groupedLayout.get(item.scanId)!);
+      const section = labelItems.filter((item) => item.group === group);
       return section.length ? [getGroupLabelLayout(section, group).bottom + 24] : [];
     });
     return Math.max(HEIGHT, ...labelBottoms);
-  }, [groupedLayout, positioned, mode]);
+  }, [positioned, journeyMarkSize, mode]);
 
   useEffect(() => {
     if (mode === "live" || !positioned.length) return;
@@ -315,14 +272,13 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setStage("model");
       setModelProgress(0);
       setJourneyProgress(0);
-      setGroupingProgress(0);
       setLabelsProgress(0);
       setSelected(null);
       setHovered(null);
       setZoomProgress(0);
       zoomValue.current.value = 0;
       zoomTween.current?.kill();
-      const values = { model: 0, journey: 0, grouping: 0 };
+      const values = { model: 0, journey: 0 };
       timeline = gsap.timeline();
       timeline.to(values, {
         journey: encounterCount,
@@ -335,21 +291,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         model: 1,
         duration: 2.2,
         ease: "power2.inOut",
-        onUpdate: () => setModelProgress(values.model),
+        onUpdate: () => {
+          setModelProgress(values.model);
+          setLabelsProgress(values.model);
+        },
       });
-      if (mode === "final") {
-        timeline.to({}, { duration: 0.6 });
-        timeline.call(() => setStage("grouping"));
-        timeline.to(values, {
-          grouping: 1,
-          duration: 1.2,
-          ease: "power2.inOut",
-          onUpdate: () => {
-            setGroupingProgress(values.grouping);
-            setLabelsProgress(values.grouping);
-          },
-        });
-      }
       timeline.call(() => setStage("complete"));
     });
     return () => {
@@ -380,7 +326,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
   const displayedItems = useMemo(() => positioned.map((item) => {
     if (mode === "live") return { ...item, size: journeyMarkSize };
-    const target = groupedLayout.get(item.scanId)!;
     const modelPosition = modelPositions.get(item.scanId)!;
     const itemIndex = positioned.findIndex((positionedItem) => positionedItem.scanId === item.scanId);
     const stagger = positioned.length > 1 ? 0.38 * itemIndex / (positioned.length - 1) : 0;
@@ -389,11 +334,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     const journeyY = d3.interpolateNumber(modelPosition.y, item.y)(liftProgress);
     return {
       ...item,
-      x: d3.interpolateNumber(journeyX, target.x)(groupingProgress),
-      y: d3.interpolateNumber(journeyY, target.y)(groupingProgress),
-      size: d3.interpolateNumber(journeyMarkSize * 0.4, target.size)(groupingProgress),
+      x: journeyX,
+      y: journeyY,
+      size: journeyMarkSize * 0.4,
     };
-  }), [positioned, groupedLayout, modelPositions, journeyMarkSize, modelProgress, groupingProgress, mode]);
+  }), [positioned, modelPositions, journeyMarkSize, modelProgress, mode]);
   const pathSegments = useMemo(() => {
     const encounterSequence = displayedItems
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
