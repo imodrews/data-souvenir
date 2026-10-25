@@ -186,9 +186,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     const journeyItems = items.map((item) => ({
       ...item,
       x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
-      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT)
-        + (mode === "final" && item.group === "purple" ? 55 : 0)
-        + (mode === "final" ? GROUP_VERTICAL_OFFSETS[item.group] : 0),
+      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT),
     }));
     const minCenterDistance = journeyMarkSize * 0.82 + 8;
     const visibleHalfSize = journeyMarkSize * 0.82 / 2;
@@ -225,6 +223,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         item.y = Math.max(minY, Math.min(maxY, item.y));
       });
       if (!moved) break;
+    }
+    if (mode === "final") {
+      journeyItems.forEach((item) => {
+        const groupOffset = GROUP_VERTICAL_OFFSETS[item.group] + (item.group === "purple" ? 55 : 0);
+        item.y = Math.max(minY, Math.min(maxY, item.y + groupOffset));
+      });
     }
     return journeyItems;
   }, [items, journeyMarkSize, mode]);
