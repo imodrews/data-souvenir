@@ -85,7 +85,7 @@ const GROUP_LABELS: Record<Group, string> = {
   purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
 };
 const GROUP_ORDER: readonly Group[] = ["red", "green", "purple"];
-const GROUP_VERTICAL_OFFSETS: Record<Group, number> = { red: -65, green: 0, purple: 40 };
+const GROUP_VERTICAL_OFFSETS: Record<Group, number> = { red: -90, green: 0, purple: 40 };
 
 function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
   const minX = Math.min(...section.map((item) => item.x - item.size * 0.825));
