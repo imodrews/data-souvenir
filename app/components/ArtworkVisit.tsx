@@ -31,7 +31,7 @@ export default function ArtworkVisit({ artworkId }: { artworkId: string }) {
 
   return <main className={`${styles.visit} ${styles.artworkVisit}`}>
     <header className={styles.header}>
-      <Link href="/" className={styles.eyebrow}>Data Souvenir</Link>
+      <Link href="/" className={styles.eyebrow}>Traces of You</Link>
       <h1>{visitor ? `${visitor.name}'s collection` : "Your collection"}</h1>
     </header>
     {error ? <p role="alert">{error}</p> : visitor ? (

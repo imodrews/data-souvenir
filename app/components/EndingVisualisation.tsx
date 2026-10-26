@@ -6,6 +6,9 @@ import gsap from "gsap";
 
 const WIDTH = 694;
 const HEIGHT = 900;
+const SELECTED_DOT_SIZE = WIDTH * 0.38;
+const ARTWORK_THUMBNAIL_WIDTH = 104;
+const ARTWORK_THUMBNAIL_HEIGHT = 126;
 const MODEL_WIDTH = 540.47;
 const MODEL_HEIGHT = 486.16;
 const MODEL_SCALE = WIDTH / MODEL_WIDTH;
@@ -86,6 +89,55 @@ const GROUP_LABELS: Record<Group, string> = {
 };
 const GROUP_ORDER: readonly Group[] = ["red", "green", "purple"];
 const GROUP_VERTICAL_OFFSETS: Record<Group, number> = { red: -90, green: 0, purple: 40 };
+const ARTWORK_FILES = [
+  "/artwork/01a_Lisa%20Mazenauer_The%20Right%20To%20Forget.jpg",
+  "/artwork/01b_Lisa%20Mazenauer_The%20Right%20To%20Forget.jpg",
+  "/artwork/02a_Teresa%20Fischer_Nobody%20Wants%20to%20Leave%20Here.jpg",
+  "/artwork/03a_Anastasiia%20Batishcheva_Tr%C3%A4ume%20einer%20Menschheitsgeschichte.jpg",
+  "/artwork/03b_Anastasiia%20Batishcheva_Tr%C3%A4ume%20einer%20Menschheitsgeschichte.jpg",
+  "/artwork/04a_Nora%20Handsley_Good%20Luck%20Around%20Every%20Turn.jpg",
+  "/artwork/04b_Nora%20Handsley_Good%20Lucj%20Around%20Every%20Turn.jpg",
+  "/artwork/04c_Nora%20Handsley_Good%20Luck%20Around%20Every%20Turn.jpg",
+  "/artwork/05a_Vincent%20V%C3%B6lker_Zugang.Struktur.Haltung.png",
+  "/artwork/06a_Cedric%20Zellweger_If%20life%20is%20a%20video%20game....jpg",
+  "/artwork/06b_Cedric%20Zellweger_If%20life%20is%20a%20video%20game....jpg",
+  "/artwork/06c_Cedric%20Zellweger_If%20life%20is%20a%20video%20game...%20behind%20the%20scenes.jpg",
+  "/artwork/07a_Pavle%20Nikoli%C4%87_False%20Friends.jpeg",
+  "/artwork/07b_Pavle%20Nikoli%C4%87_False%20Friends.jpg",
+  "/artwork/08a_Mai%20Do_Every%20Weekend%2C%20Our%20Attic%20Becomes%20Vietnam.jpg",
+  "/artwork/08b_Mai%20Do_Every%20Weekend%2C%20Our%20Attic%20Becomes%20Vietnam.jpg",
+];
+
+function getArtistArtworkFiles(artist: string) {
+  return ARTWORK_FILES.filter((path) => {
+    const filename = decodeURIComponent(path.split("/").at(-1) ?? "");
+    return filename.match(/^\d+[a-z]_(.+?)_/)?.[1] === artist;
+  });
+}
+
+function getArtworkTitle(path: string) {
+  const filename = decodeURIComponent(path.split("/").at(-1) ?? "");
+  return filename.replace(/^\d+[a-z]_[^_]+_/, "").replace(/\.[^.]+$/, "").replace("Good Lucj", "Good Luck");
+}
+
+function getArtworkTitleLines(path: string) {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of getArtworkTitle(path).split(/\s+/)) {
+    if (line && line.length + word.length + 1 > 18) {
+      lines.push(line);
+      line = "";
+    }
+    let remaining = word;
+    while (remaining.length > 18) {
+      lines.push(remaining.slice(0, 18));
+      remaining = remaining.slice(18);
+    }
+    line = line ? `${line} ${remaining}` : remaining;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
   const minX = Math.min(...section.map((item) => item.x - item.size * 0.825));
@@ -129,6 +181,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [expandedArtwork, setExpandedArtwork] = useState<{ path: string; width: number; height: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [zoomProgress, setZoomProgress] = useState(0);
   const [replayKey, setReplayKey] = useState(0);
@@ -282,6 +335,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setJourneyProgress(0);
       setLabelsProgress(0);
       setSelected(null);
+      setExpandedArtwork(null);
       setHovered(null);
       setZoomProgress(0);
       zoomValue.current.value = 0;
@@ -314,6 +368,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
   useEffect(() => () => { zoomTween.current?.kill(); }, []);
 
+  function showArtwork(path: string) {
+    const image = new window.Image();
+    image.onload = () => setExpandedArtwork({ path, width: image.naturalWidth, height: image.naturalHeight });
+    image.src = path;
+  }
+
   function enterOrExit(scanId: string) {
     if (mode === "live" || stage !== "complete") return;
     zoomTween.current?.kill();
@@ -321,7 +381,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       zoomTween.current = gsap.to(zoomValue.current, {
         value: 0, duration: 0.9, ease: "power3.inOut",
         onUpdate: () => setZoomProgress(zoomValue.current.value),
-        onComplete: () => setSelected(null),
+        onComplete: () => {
+          setSelected(null);
+          setExpandedArtwork(null);
+        },
       });
     } else if (!selected) {
       setSelected(scanId);
@@ -422,9 +485,21 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const active = selected === item.scanId;
           const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
           const displayY = active ? d3.interpolateNumber(item.y, canvasHeight / 2)(zoomProgress) : item.y;
-          const displaySize = active ? d3.interpolateNumber(item.size, WIDTH * 0.9)(zoomProgress) : item.size;
-          const artistFontSize = Math.max(6, Math.min(10, displaySize * 0.105));
-          const artistTextWidth = Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
+          const displaySize = active ? d3.interpolateNumber(item.size, SELECTED_DOT_SIZE)(zoomProgress) : item.size;
+          const artworkFiles = active ? getArtistArtworkFiles(item.artist) : [];
+          const artworkRadius = Math.min(WIDTH * 0.46, canvasHeight * 0.36);
+          const largeArtistLabel = active && zoomProgress >= 0.999;
+          const artistFontSize = largeArtistLabel ? 25 : Math.max(6, Math.min(10, displaySize * 0.105));
+          const artistTextWidth = largeArtistLabel
+            ? Math.min(displaySize * 1.25, item.artist.length * artistFontSize * 0.45)
+            : Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
+          const expandedImageScale = expandedArtwork
+            ? Math.min(WIDTH * 0.84 / expandedArtwork.width, canvasHeight * 0.72 / expandedArtwork.height)
+            : 0;
+          const expandedImageWidth = expandedArtwork ? expandedArtwork.width * expandedImageScale : 0;
+          const expandedImageHeight = expandedArtwork ? expandedArtwork.height * expandedImageScale : 0;
+          const expandedImageX = (WIDTH - expandedImageWidth) / 2;
+          const expandedImageY = Math.max(28, (canvasHeight - expandedImageHeight - 74) / 2);
           return <g key={item.scanId} opacity={!selected || active ? 1 : 1 - zoomProgress}
             style={{ cursor: mode === "final" && stage === "complete" ? "pointer" : "default" }}
             pointerEvents={selected && !active ? "none" : "auto"}
@@ -432,14 +507,64 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/svg-dot.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
+            <image href="/svg-dot-2.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
               width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
               style={{ filter: `brightness(${brightness})` }} />
+            <g opacity={zoomProgress}>
+              {artworkFiles.map((path, index) => {
+                const angle = -Math.PI / 2 + (Math.PI * 2 * index) / artworkFiles.length;
+                const artworkX = displayX + Math.cos(angle) * artworkRadius;
+                const artworkY = displayY + Math.sin(angle) * artworkRadius;
+                const artworkScale = 0.8 + zoomProgress * 0.2;
+                const titleLines = getArtworkTitleLines(path);
+                return <g key={path} role="button" tabIndex={0} aria-label={`Enlarge ${getArtworkTitle(path)}`}
+                  style={{ cursor: "zoom-in" }}
+                  transform={`translate(${artworkX} ${artworkY}) scale(${artworkScale}) translate(${-artworkX} ${-artworkY})`}
+                  onClick={(event) => { event.stopPropagation(); showArtwork(path); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      showArtwork(path);
+                    }
+                  }}>
+                  <image href={path} x={artworkX - ARTWORK_THUMBNAIL_WIDTH / 2} y={artworkY - ARTWORK_THUMBNAIL_HEIGHT / 2}
+                    width={ARTWORK_THUMBNAIL_WIDTH} height={ARTWORK_THUMBNAIL_HEIGHT} preserveAspectRatio="xMidYMid slice">
+                    <title>{getArtworkTitle(path)}</title>
+                  </image>
+                  <rect x={artworkX - ARTWORK_THUMBNAIL_WIDTH / 2} y={artworkY - ARTWORK_THUMBNAIL_HEIGHT / 2}
+                    width={ARTWORK_THUMBNAIL_WIDTH} height={ARTWORK_THUMBNAIL_HEIGHT} fill="none" stroke="#e1dfd2" strokeWidth="2" />
+                  <text x={artworkX} y={artworkY + ARTWORK_THUMBNAIL_HEIGHT / 2 + 13} textAnchor="middle"
+                    fill="#e1dfd2" stroke="var(--background)" strokeWidth="3" strokeLinejoin="round" paintOrder="stroke"
+                    fontSize="10" fontWeight="500" pointerEvents="none">
+                    {titleLines.map((line, lineIndex) => <tspan key={lineIndex} x={artworkX} dy={lineIndex === 0 ? 0 : 12}>{line}</tspan>)}
+                  </text>
+                </g>;
+              })}
+            </g>
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
-              fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
+              fill="#e1dfd2" fontFamily="Neue Haas Grotesk Display" fontSize={artistFontSize} fontWeight={largeArtistLabel ? 700 : 400}
+              textLength={artistTextWidth} lengthAdjust={largeArtistLabel ? "spacing" : "spacingAndGlyphs"} pointerEvents="none">
               {item.artist}
             </text>}
+            {active && expandedArtwork && <g role="dialog" aria-label={getArtworkTitle(expandedArtwork.path)}
+              onClick={(event) => { event.stopPropagation(); setExpandedArtwork(null); }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setExpandedArtwork(null);
+                }
+              }}>
+              <rect x="0" y="0" width={WIDTH} height={canvasHeight} fill="#111" opacity="0.92" />
+              <image href={expandedArtwork.path} x={expandedImageX} y={expandedImageY} width={expandedImageWidth} height={expandedImageHeight}
+                preserveAspectRatio="xMidYMid meet" />
+              <text x={WIDTH / 2} y={expandedImageY + expandedImageHeight + 30} textAnchor="middle" fill="#e1dfd2"
+                fontFamily="Neue Haas Grotesk Display" fontSize="18" fontWeight="500">
+                {getArtworkTitle(expandedArtwork.path)}
+              </text>
+            </g>}
           </g>;
         })}
       </svg>

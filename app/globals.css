@@ -1,6 +1,6 @@
 @font-face {
-  font-family: "Neue Haas Grotesk Text";
-  src: url("/fonts/NeueHaasGroteskText-55Roman-Trial.otf") format("opentype");
+  font-family: "Neue Haas Grotesk Text Mono";
+  src: url("/fonts/NeueHaasGroteskTextMono-55Roman-Trial.otf") format("opentype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -26,7 +26,7 @@
   --background: #141312;
   --foreground: #e1dfd2;
   --font-heading: "Neue Haas Grotesk Display";
-  --font-body: "Neue Haas Grotesk Text";
+  --font-body: "Neue Haas Grotesk Text Mono";
 }
 
 @media (prefers-color-scheme: dark) {
