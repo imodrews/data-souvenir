@@ -88,33 +88,6 @@ export default function Souvenir({ sessionId }: SouvenirProps) {
         <FloorPlan />
 
         <defs>
-          <radialGradient id="fuzzyDot">
-            <stop
-              offset="0%"
-              stopColor="#25365c"
-              stopOpacity="0.9"
-            />
-            <stop
-              offset="40%"
-              stopColor="#354568"
-              stopOpacity="0.7"
-            />
-            <stop
-              offset="75%"
-              stopColor="#59647a"
-              stopOpacity="0.25"
-            />
-            <stop
-              offset="100%"
-              stopColor="#59647a"
-              stopOpacity="0"
-            />
-          </radialGradient>
-
-          <filter id="blur">
-            <feGaussianBlur stdDeviation="12" />
-          </filter>
-
           <filter id="slight_blur">
             <feGaussianBlur stdDeviation="3" />
           </filter>
@@ -182,12 +155,13 @@ export default function Souvenir({ sessionId }: SouvenirProps) {
         {/* ARTWORK DOTS */}
         {selectedArtworkData.map((artwork, index) => (
           <g key={`${artwork.id}-${index}`}>
-            <circle
-              cx={artwork.x ?? 0}
-              cy={artwork.y ?? 0}
-              r="60"
-              fill="url(#fuzzyDot)"
-              filter="url(#blur)"
+            <image
+              href="/svg-dot-3.svg"
+              x={(artwork.x ?? 0) - 60}
+              y={(artwork.y ?? 0) - 60}
+              width="120"
+              height="120"
+              preserveAspectRatio="xMidYMid meet"
               className="artwork-dot"
             />
           </g>
