@@ -157,7 +157,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
           <p>Tap your phone on the tag beside an artwork. A dot will appear here for each artwork you collect.</p>
         </figcaption>
         <svg viewBox="0 0 400 200" aria-hidden="true">
-          <image href="/correct_color.png" x="100" y="0" width="200" height="200" />
+          <image href="/svg-dot-3.svg" x="100" y="0" width="200" height="200" />
         </svg>
       </figure>}
       <footer className={styles.collectionFooter}>

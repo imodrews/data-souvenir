@@ -31,11 +31,6 @@ export type JourneyEncounter = {
 
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 28;
-const COLORS: Record<Group, string> = {
-  red: "#b85c5c",
-  green: "#5f8f68",
-  purple: "#8064a2",
-};
 const GROUP_LABELS: Record<Group, string> = {
   red: "Sichtbarkeit des Ungesehenen, \u00bbNicht-Pr\u00e4senz\u00ab",
   green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
@@ -367,7 +362,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
           const labelScale = 0.9 + labelProgress * 0.1;
           return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
             transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
-            <text x={label.x} y={label.y} textAnchor="start" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+            <text x={label.x} y={label.y} textAnchor="start" fill="#e1dfd2" fontSize={LABEL_FONT_SIZE}>
               {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
             </text>
           </g>;
@@ -389,7 +384,7 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/correct_color.png" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
+            <image href="/svg-dot-3.svg" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
               width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" style={{ filter: `brightness(${brightness})` }} />
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"

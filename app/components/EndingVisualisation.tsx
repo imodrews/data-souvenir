@@ -77,11 +77,6 @@ export type JourneyEncounter = {
 
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 28;
-const COLORS: Record<Group, string> = {
-  red: "#b85c5c",
-  green: "#5f8f68",
-  purple: "#8064a2",
-};
 const GROUP_LABELS: Record<Group, string> = {
   red: "Sichtbarkeit des Ungesehenen, \u00bbNicht-Pr\u00e4senz\u00ab",
   green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
@@ -474,7 +469,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const labelScale = 0.9 + labelProgress * 0.1;
           return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
             transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
-            <text x={label.x} y={label.y} textAnchor="middle" fill={COLORS[group]} fontSize={LABEL_FONT_SIZE}>
+            <text x={label.x} y={label.y} textAnchor="middle" fill="#e1dfd2" fontSize={LABEL_FONT_SIZE}>
               {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
             </text>
           </g>;
@@ -507,7 +502,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             onMouseLeave={() => setHovered(null)}
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/svg-dot-2.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
+            <image href="/svg-dot-3.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
               width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
               style={{ filter: `brightness(${brightness})` }} />
             <g opacity={zoomProgress}>

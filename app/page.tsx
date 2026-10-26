@@ -95,13 +95,13 @@ export default function Home() {
             </g>
           </svg>
           <svg className={styles.welcomeDot} viewBox="0 0 180 180">
-            <image href="/correct_color.png" width="180" height="180" />
+            <image href="/svg-dot-3.svg" width="180" height="180" />
           </svg>
           <svg className={styles.welcomeDot} viewBox="0 0 180 180">
-            <image href="/correct_color.png" width="180" height="180" />
+            <image href="/svg-dot-3.svg" width="180" height="180" />
           </svg>
           <svg className={styles.welcomeDot} viewBox="0 0 180 180">
-            <image href="/correct_color.png" width="180" height="180" />
+            <image href="/svg-dot-3.svg" width="180" height="180" />
           </svg>
           </div>
           <form onSubmit={beginVisit} className={styles.form}>
