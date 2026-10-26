@@ -449,8 +449,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </defs>
         <image href="/3-D-14.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
           preserveAspectRatio="none" opacity={mode === "final" ? modelFadeOpacity : 1} pointerEvents="none" />
-        <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
-          pointerEvents="none">entrance</text>
+        {(mode === "live" || stage === "model") && <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
+          pointerEvents="none">entrance</text>}
         <g opacity={0.85} pointerEvents="none">
           <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
@@ -483,11 +483,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const displaySize = active ? d3.interpolateNumber(item.size, SELECTED_DOT_SIZE)(zoomProgress) : item.size;
           const artworkFiles = active ? getArtistArtworkFiles(item.artist) : [];
           const artworkRadius = Math.min(WIDTH * 0.46, canvasHeight * 0.36);
-          const largeArtistLabel = active && zoomProgress >= 0.999;
-          const artistFontSize = largeArtistLabel ? 25 : Math.max(6, Math.min(10, displaySize * 0.105));
-          const artistTextWidth = largeArtistLabel
-            ? Math.min(displaySize * 1.25, item.artist.length * artistFontSize * 0.45)
-            : Math.min(displaySize * 0.72, item.artist.length * artistFontSize * 0.6);
+          const artistScale = displaySize / item.size;
+          const baseArtistFontSize = Math.max(6, Math.min(10, item.size * 0.105));
+          const artistFontSize = baseArtistFontSize * artistScale;
+          const artistTextWidth = Math.min(item.size * 0.72, item.artist.length * baseArtistFontSize * 0.6) * artistScale;
           const expandedImageScale = expandedArtwork
             ? Math.min(WIDTH * 0.84 / expandedArtwork.width, canvasHeight * 0.72 / expandedArtwork.height)
             : 0;
@@ -504,7 +503,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
             <image href="/svg-dot-3.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
               width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
-              style={{ filter: `brightness(${brightness})` }} />
+              style={{ filter: `brightness(${brightness}) drop-shadow(0 0 8px rgba(196, 91, 156, 0.5))` }} />
             <g opacity={zoomProgress}>
               {artworkFiles.map((path, index) => {
                 const angle = -Math.PI / 2 + (Math.PI * 2 * index) / artworkFiles.length;
@@ -539,8 +538,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             </g>
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
-              fill="#e1dfd2" fontFamily="Neue Haas Grotesk Display" fontSize={artistFontSize} fontWeight={largeArtistLabel ? 700 : 400}
-              textLength={artistTextWidth} lengthAdjust={largeArtistLabel ? "spacing" : "spacingAndGlyphs"} pointerEvents="none">
+              fill="#e1dfd2" fontFamily="Neue Haas Grotesk Text Mono" fontSize={artistFontSize} fontWeight={400}
+              textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
               {item.artist}
             </text>}
             {active && expandedArtwork && <g role="dialog" aria-label={getArtworkTitle(expandedArtwork.path)}
@@ -556,7 +555,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
               <image href={expandedArtwork.path} x={expandedImageX} y={expandedImageY} width={expandedImageWidth} height={expandedImageHeight}
                 preserveAspectRatio="xMidYMid meet" />
               <text x={WIDTH / 2} y={expandedImageY + expandedImageHeight + 30} textAnchor="middle" fill="#e1dfd2"
-                fontFamily="Neue Haas Grotesk Display" fontSize="18" fontWeight="500">
+                fontFamily="Neue Haas Grotesk Text Mono" fontSize="18" fontWeight="500">
                 {getArtworkTitle(expandedArtwork.path)}
               </text>
             </g>}

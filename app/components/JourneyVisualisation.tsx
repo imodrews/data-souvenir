@@ -385,7 +385,8 @@ export default function JourneyVisualisation({ encounters, mode }: JourneyVisual
             onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
             <title>{`${item.artist} \u2014 ${item.name}`}</title>
             <image href="/svg-dot-3.svg" x={displayX - displaySize / 2} y={displayY - displaySize / 2}
-              width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet" style={{ filter: `brightness(${brightness})` }} />
+              width={displaySize} height={displaySize} preserveAspectRatio="xMidYMid meet"
+              style={{ filter: `brightness(${brightness}) drop-shadow(0 0 8px rgba(196, 91, 156, 0.5))` }} />
             <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
             {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
               fill="#e1dfd2" fontSize={artistFontSize} fontWeight="400" textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">

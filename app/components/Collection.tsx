@@ -161,7 +161,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
         </svg>
       </figure>}
       <footer className={styles.collectionFooter}>
-        <Link className={styles.action} href="/exit">Exit and view my souvenir</Link>
+        <Link className={styles.action} href="/exit">End Journey</Link>
       </footer>
     </div>
   );
