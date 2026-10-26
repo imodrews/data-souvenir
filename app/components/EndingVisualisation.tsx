@@ -139,7 +139,7 @@ function getGroupLabelLayout(section: { x: number; y: number; size: number }[], 
   const maxX = Math.max(...section.map((item) => item.x + item.size * 0.825));
   const minY = Math.min(...section.map((item) => item.y - item.size * 0.825));
   const maxY = Math.max(...section.map((item) => item.y + item.size * 0.825));
-  const x = (minX + maxX) / 2;
+  const centerX = (minX + maxX) / 2;
   const maxCharacters = Math.max(1, Math.floor((WIDTH - 48) / (LABEL_FONT_SIZE * 0.6)));
   const lines: string[] = [];
   let line = "";
@@ -156,7 +156,10 @@ function getGroupLabelLayout(section: { x: number; y: number; size: number }[], 
     line = line ? `${line} ${remaining}` : remaining;
   }
   if (line) lines.push(line);
-  const y = minY - 12 - (lines.length - 1) * LABEL_LINE_HEIGHT;
+  const longestLineWidth = Math.max(...lines.map((labelLine) => labelLine.length * LABEL_FONT_SIZE * 0.6));
+  const x = Math.max(24 + longestLineWidth / 2, Math.min(WIDTH - 24 - longestLineWidth / 2, centerX));
+  let y = minY - 12 - (lines.length - 1) * LABEL_LINE_HEIGHT;
+  if (y - LABEL_FONT_SIZE < 24) y = maxY + LABEL_FONT_SIZE + 8;
   return {
     x, y, lines,
     top: Math.min(minY, y - LABEL_FONT_SIZE),
