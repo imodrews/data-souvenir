@@ -94,10 +94,8 @@ const RING_GAP = 6;
 const LABEL_SIZE = 15;
 const CARD_WIDTH = 118;
 const CARD_HEIGHT = 148;
-const CARD_PADDING = 7;
-const CARD_PADDING_BOTTOM = 24;
-const CARD_SPREAD = 54;
-const CARD_TILT = 7;
+const PHOTO_GAP = 12;
+const PHOTO_SPREAD = CARD_WIDTH + PHOTO_GAP;
 const BAR_HEIGHT = 92;
 
 
@@ -400,7 +398,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   /* ---------- Collection fan ---------- */
   const selectedDot = selected ? dots.find((dot) => dot.scanId === selected) ?? null : null;
   const collection = selectedDot ? getArtistArtworkFiles(selectedDot.artist) : [];
-  const fanWidth = (collection.length - 1) * CARD_SPREAD + CARD_WIDTH;
+  const fanWidth = collection.length * CARD_WIDTH + Math.max(0, collection.length - 1) * PHOTO_GAP;
   const fanCenterX = selectedDot ? clamp(selectedDot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12) : 0;
   const fanCenterY = selectedDot
     ? clamp(
@@ -453,6 +451,18 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           .${uid}-focus:focus { outline: none; }
           .${uid}-focus:focus-visible .${uid}-ring { stroke: ${ACCENT}; stroke-width: 3; }
         `}</style>
+        <defs>
+          <filter id={`${uid}-halo`} x="0" y="0" width={WIDTH} height={CANVAS_HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
+            <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
+            <feGaussianBlur in="organic" stdDeviation="9" />
+          </filter>
+          <filter id={`${uid}-soft`} x="0" y="0" width={WIDTH} height={CANVAS_HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
+            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
+            <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
+            <feGaussianBlur in="organic" stdDeviation="3" />
+          </filter>
+        </defs>
 
         {/* Isometric floor plan of the space, always visible */}
         <g pointerEvents="none" fill="none" stroke={INK} strokeOpacity={0.3} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round">
@@ -476,9 +486,14 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
         {/* Path */}
         <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.75}>
-          {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke={INK} strokeOpacity={index === 0 ? 0.5 : 1}
-            strokeWidth={1.6} strokeLinecap="round" pathLength={1} strokeDasharray="1"
-            strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          <g filter={`url(#${uid}-halo)`} opacity={0.2}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={8} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          </g>
+          <g filter={`url(#${uid}-soft)`} opacity={0.22}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={4} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          </g>
         </g>
 
         {/* Names: number + surname, always visible once the visitor has reached that artist */}
@@ -505,6 +520,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const completedVisits = dot.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
           const active = selected === dot.scanId;
           const lit = active || hovered === dot.scanId || (!selected && themeFilter === dot.group);
+          const ringColor = lit ? ACCENT : "rgba(239,239,232,0.65)";
           let opacity = completedVisits > 0 ? 1 : 0;
           if (selected && !active) opacity *= 0.45;
           else if (!selected && themeFilter && themeFilter !== dot.group) opacity *= 0.25;
@@ -529,27 +545,30 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <circle cx={dot.x} cy={dot.y} r={30} fill="transparent" />
             {Array.from({ length: Math.max(0, completedVisits - 1) }, (_, ringIndex) => (
               <circle key={ringIndex} className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={FIRST_RING + RING_GAP * ringIndex}
-                fill="none" stroke={lit ? ACCENT : INK} strokeOpacity={lit ? 0.9 : 0.5} strokeWidth={1.4} />
+                fill="none" stroke={ringColor} strokeOpacity={lit ? 0.9 : 0.5} strokeWidth={1.4}
+                style={{ filter: `drop-shadow(0 0 3px ${ringColor}) drop-shadow(0 0 9px ${ringColor})` }} />
             ))}
-            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={DOT_RADIUS} fill={lit ? ACCENT : INK}
-              style={{ filter: lit ? `drop-shadow(0 0 4px ${ACCENT}) drop-shadow(0 0 14px ${ACCENT})` : `drop-shadow(0 0 4px rgba(239,239,232,0.35))` }} />
+            <image className={`${uid}-ring`} href="/svg-dot-3.svg" x={dot.x - 15} y={dot.y - 14}
+              width={30} height={28} preserveAspectRatio="xMidYMid meet"
+              style={{ filter: lit ? `drop-shadow(0 0 4px ${ACCENT}) drop-shadow(0 0 14px ${ACCENT})` : "drop-shadow(0 0 4px rgba(239,239,232,0.35))" }} />
+            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={17} fill="none" stroke="transparent" pointerEvents="none"
+              style={{ filter: `drop-shadow(0 0 3px ${ACCENT}) drop-shadow(0 0 9px ${ACCENT})` }} />
           </g>;
         })}
 
-        {/* Collection: the artist's works fan out of the dot like a small stack of photos */}
+        {/* Collection: show the artist's works as separate, unframed photos */}
         {selectedDot && collection.map((path, index) => {
           const middle = index - (collection.length - 1) / 2;
           const isFront = index === front;
-          const targetX = fanCenterX + middle * CARD_SPREAD;
+          const targetX = fanCenterX + middle * PHOTO_SPREAD;
           const x = d3.interpolateNumber(selectedDot.x, targetX)(openProgress);
-          const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress) + (isFront ? -16 * openProgress : 0);
-          const rotation = isFront ? 0 : middle * CARD_TILT * openProgress;
-          const scale = (0.2 + 0.8 * openProgress) * (isFront ? 1 + 0.14 * openProgress : 1);
+          const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress);
+          const scale = 0.2 + 0.8 * openProgress;
           const title = getArtworkTitle(path);
           return <g key={path} role="button" tabIndex={0} className={`${uid}-focus`}
-            aria-label={isFront ? `Enlarge ${title}` : `Bring ${title} to the front`}
+            aria-label={isFront ? `Enlarge ${title}` : `Select ${title}`}
             opacity={Math.min(1, openProgress * 1.5)}
-            transform={`translate(${x} ${y}) rotate(${rotation}) scale(${scale})`}
+            transform={`translate(${x} ${y}) scale(${scale})`}
             style={{ cursor: isFront ? "zoom-in" : "pointer" }}
             onClick={(event) => { event.stopPropagation(); if (isFront) showArtwork(path); else setFront(index); }}
             onKeyDown={(event) => {
@@ -559,12 +578,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 if (isFront) showArtwork(path); else setFront(index);
               }
             }}>
-            <rect x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2} width={CARD_WIDTH} height={CARD_HEIGHT} rx={3} fill={INK}
-              stroke={isFront ? ACCENT : "none"} strokeWidth={isFront ? 4 : 0}
-              style={{ filter: isFront ? `drop-shadow(0 0 16px rgba(180,167,255,0.6)) drop-shadow(0 10px 20px rgba(0,0,0,0.5))` : "drop-shadow(0 6px 14px rgba(0,0,0,0.5))" }} />
-            <image href={path} x={-CARD_WIDTH / 2 + CARD_PADDING} y={-CARD_HEIGHT / 2 + CARD_PADDING}
-              width={CARD_WIDTH - CARD_PADDING * 2} height={CARD_HEIGHT - CARD_PADDING - CARD_PADDING_BOTTOM}
-              preserveAspectRatio="xMidYMid slice" />
+            <image href={path} x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2}
+              width={CARD_WIDTH} height={CARD_HEIGHT} preserveAspectRatio="xMidYMid slice"
+              style={{ filter: isFront ? "drop-shadow(0 0 12px rgba(180,167,255,0.55))" : "drop-shadow(0 4px 8px rgba(0,0,0,0.35))" }} />
           </g>;
         })}
 
