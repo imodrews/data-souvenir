@@ -34,7 +34,7 @@ export default function EndingTestPage() {
       const supabase = createClient();
       const { data, error: queryError } = await supabase
         .from("scans")
-        .select("id, scanned_at, artwork:artworks (id, title, x, y, artist:artists (name, curatorial_group))")
+        .select("id, scanned_at, artwork:artworks (id, title, x, y, artist:artists (name, curatorial_group, bio_eng))")
         .eq("session_id", sessionId)
         .order("scanned_at", { ascending: true });
       if (cancelled) return;
@@ -43,7 +43,7 @@ export default function EndingTestPage() {
         setEncounters([]);
       } else {
         const normalized = (data ?? []).flatMap((raw) => {
-          type Artist = { name: string; curatorial_group: string | null };
+          type Artist = { name: string; curatorial_group: string | null; bio_eng: string | null };
           type ScannedArtwork = {
             id: string;
             title: string | null;
@@ -63,6 +63,7 @@ export default function EndingTestPage() {
             artworkId: artwork.id,
             name: artwork.title ?? "Untitled",
             artist: artist?.name ?? "Unknown artist",
+            artistDescription: artist?.bio_eng ?? null,
             group: artist?.curatorial_group,
             x: artwork.x,
             y: artwork.y,

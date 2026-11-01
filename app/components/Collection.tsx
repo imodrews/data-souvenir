@@ -8,7 +8,7 @@ import type { Artwork } from "../../types/artwork";
 import EndingVisualisation, { type JourneyEncounter } from "./EndingVisualisation";
 import styles from "../page.module.css";
 
-type CollectedArtist = { name: string; curatorial_group: string | null };
+type CollectedArtist = { name: string; curatorial_group: string | null; bio_eng: string | null };
 type CollectedArtwork = Artwork & {
   artist: CollectedArtist | CollectedArtist[] | null;
 };
@@ -29,7 +29,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
 
     async function loadScans() {
       const { data, error: queryError } = await supabase.from("scans")
-        .select("id, artwork:artworks (*, artist:artists (name, curatorial_group))")
+        .select("id, artwork:artworks (*, artist:artists (name, curatorial_group, bio_eng))")
         .eq("session_id", sessionId).order("scanned_at", { ascending: true });
       if (queryError) throw new Error(queryError.message);
       if (!cancelled) {
@@ -50,7 +50,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
         if (scanRequest.current?.key !== key) {
           const promise = (async () => {
             const { data, error: artworkError } = await supabase.from("artworks")
-              .select("*, artist:artists (name, curatorial_group)").eq("id", artworkId).single();
+              .select("*, artist:artists (name, curatorial_group, bio_eng)").eq("id", artworkId).single();
             if (artworkError || !data) throw new Error("This artwork could not be found. Please check the tag and try again.");
             if (isVisitFinished(sessionId)) {
               window.location.replace(getFinalVisitPath(sessionId));
@@ -104,6 +104,7 @@ export default function Collection({ sessionId, artworkId }: Props) {
       artworkId: artwork.id,
       name: artwork.title ?? "Untitled",
       artist: artist?.name ?? "Unknown artist",
+      artistDescription: artist?.bio_eng ?? null,
       group: artist?.curatorial_group,
       x: artwork.x,
       y: artwork.y,

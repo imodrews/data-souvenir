@@ -88,17 +88,17 @@ const MONO: CSSProperties = { fontFamily: MONO_FONT, fontVariationSettings: '"MO
 const GLASS: CSSProperties = { backgroundColor: "rgba(239, 239, 232, 0.05)", boxShadow: "inset 1px 1px 5px rgba(239, 239, 232, 0.4)" };
 
 /* ---------- Marks ---------- */
-const DOT_RADIUS = 22;
-const FIRST_RING = 23; // one ring per return visit
-const RING_GAP = 10;
+const DOT_RADIUS = 25;
+const FIRST_RING = 27; // one ring per return visit
+const RING_GAP = 11;
 const LABEL_SIZE = 18;
-const DOT_IMAGE_WIDTH = 54;
-const DOT_IMAGE_HEIGHT = 50;
+const DOT_IMAGE_WIDTH = 64;
+const DOT_IMAGE_HEIGHT = 59;
 const CARD_WIDTH = 148;
 const CARD_HEIGHT = 184;
 const PHOTO_GAP = 12;
 const PHOTO_SPREAD = CARD_WIDTH + PHOTO_GAP;
-const BAR_HEIGHT = 92;
+const BAR_HEIGHT = 176;
 
 
 type Group = "red" | "green" | "purple";
@@ -107,6 +107,7 @@ type JourneyItem = {
   artworkId: string;
   name: string;
   artist: string;
+  artistDescription: string | null;
   group: Group;
   floorX: number;
   floorY: number;
@@ -120,6 +121,7 @@ export type JourneyEncounter = {
   artworkId: string;
   name: string;
   artist: string;
+  artistDescription: string | null;
   group: string | null | undefined;
   x: number | null;
   y: number | null;
@@ -164,6 +166,23 @@ function getArtworkTitle(path: string) {
 
 function truncate(text: string, maxCharacters: number) {
   return text.length > maxCharacters ? `${text.slice(0, maxCharacters - 1).trimEnd()}…` : text;
+}
+
+function wrapDescription(text: string, maxCharacters: number, maxLines: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  while (words.length && lines.length < maxLines) {
+    let line = words.shift()!;
+    while (words.length && `${line} ${words[0]}`.length <= maxCharacters) {
+      line += ` ${words.shift()}`;
+    }
+    if (words.length && lines.length === maxLines - 1) {
+      lines.push(truncate([line, ...words].join(" "), maxCharacters));
+      break;
+    }
+    lines.push(line);
+  }
+  return lines;
 }
 
 function surname(artist: string) {
@@ -316,7 +335,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       .sort((first, second) => first.encounterIndex - second.encounterIndex);
     const entranceSegment = encounterSequence[0]
       ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-        .curve(d3.curveLinear)([[MODEL_ENTRANCE_POSITION.x, MODEL_ENTRANCE_POSITION.y], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
+        .curve(d3.curveBumpY)([[MODEL_ENTRANCE_POSITION.x, MODEL_ENTRANCE_POSITION.y], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
       : null;
     return [
       ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
@@ -324,7 +343,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         const next = encounterSequence[index + 1];
         if (!next) return [];
         const segment = d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-          .curve(d3.curveLinear)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
+          .curve(d3.curveBumpX)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
         return segment ? [{ d: segment, index: index + 1 }] : [];
       }),
     ];
@@ -400,6 +419,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   /* ---------- Collection fan ---------- */
   const selectedDot = selected ? dots.find((dot) => dot.scanId === selected) ?? null : null;
   const collection = selectedDot ? getArtistArtworkFiles(selectedDot.artist) : [];
+  const artistBioLines = selectedDot
+    ? wrapDescription(selectedDot.artistDescription?.trim() || "Artist description unavailable.", 48, 4)
+    : [];
   const fanWidth = collection.length * CARD_WIDTH + Math.max(0, collection.length - 1) * PHOTO_GAP;
   const fanCenterX = selectedDot ? clamp(selectedDot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12) : 0;
   const fanCenterY = selectedDot
@@ -550,7 +572,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
               }
             }}>
             <title>{`${dot.artist} — ${dot.name}`}</title>
-            <circle cx={dot.x} cy={dot.y} r={30} fill="transparent" />
+            <circle cx={dot.x} cy={dot.y} r={36} fill="transparent" />
             {Array.from({ length: Math.max(0, completedVisits - 1) }, (_, ringIndex) => (
               <circle key={ringIndex} className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={FIRST_RING + RING_GAP * ringIndex}
                 fill="none" stroke={ringColor} strokeOpacity={lit ? 0.9 : 0.5} strokeWidth={1.4}
@@ -561,7 +583,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
               style={{ filter: lit
                 ? `drop-shadow(0 0 5px #fff) drop-shadow(0 0 13px rgba(255,255,255,0.85)) drop-shadow(0 0 18px ${ACCENT})`
                 : "drop-shadow(0 0 5px #fff) drop-shadow(0 0 13px rgba(255,255,255,0.75))" }} />
-            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={29} fill="none" stroke="transparent" pointerEvents="none"
+            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={35} fill="none" stroke="transparent" pointerEvents="none"
               style={{ filter: `drop-shadow(0 0 3px ${ACCENT}) drop-shadow(0 0 9px ${ACCENT})` }} />
           </g>;
         })}
@@ -598,13 +620,19 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         {selectedDot && <g opacity={openProgress} onClick={(event) => event.stopPropagation()}>
           <rect x={10} y={barY} width={WIDTH - 20} height={BAR_HEIGHT} rx={8} fill="#1E1E1E" fillOpacity={0.95}
             stroke={ACCENT} strokeOpacity={0.7} strokeWidth={1.5} />
-          <text x={30} y={barY + 28} fontSize={14} fill={ACCENT_TEXT} style={MONO}>
-            {`${selectedDot.order} · ${surname(selectedDot.artist).toUpperCase()} · ${THEMES[selectedDot.group].short.toUpperCase()}${selectedDot.visits > 1 ? ` · ${selectedDot.visits} VISITS` : ""}`}
+          <text x={30} y={barY + 28} fontSize={21} fill={ACCENT_TEXT} style={DISPLAY}>
+            {selectedDot.artist}
           </text>
-          <text x={30} y={barY + 56} fontSize={22} fill={INK} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
+          <text x={30} y={barY + 48} fontSize={12} fill={INK_MUTED} style={MONO}>
+            {`${selectedDot.order} · ${THEMES[selectedDot.group].short.toUpperCase()}${selectedDot.visits > 1 ? ` · ${selectedDot.visits} VISITS` : ""}`}
+          </text>
+          <text x={30} y={barY + 72} fontSize={16} fill={INK} style={{ fontFamily: BODY_FONT }}>
+            {artistBioLines.map((line, index) => <tspan key={index} x={30} dy={index === 0 ? 0 : 17}>{line}</tspan>)}
+          </text>
+          <text x={30} y={barY + 146} fontSize={20} fill={INK} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
             {frontPath ? truncate(getArtworkTitle(frontPath), 36) : "No images for this artist yet"}
           </text>
-          <text x={30} y={barY + 78} fontSize={13} fill={INK_MUTED} style={MONO}>
+          <text x={30} y={barY + 165} fontSize={12} fill={INK_MUTED} style={MONO}>
             {collection.length ? `IMAGE ${front + 1} OF ${collection.length} · TAP A CARD TO BRING IT FORWARD` : ""}
           </text>
           {frontPath && <g role="button" tabIndex={0} className={`${uid}-focus`} aria-label={`Enlarge ${getArtworkTitle(frontPath)}`} style={{ cursor: "zoom-in" }}
@@ -612,8 +640,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); showArtwork(frontPath); }
             }}>
-            <rect x={WIDTH - 20 - 166} y={barY + 18} width={156} height={56} rx={8} fill={INK} />
-            <text x={WIDTH - 20 - 88} y={barY + 52} textAnchor="middle" fontSize={18} fill={GROUND} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
+            <rect x={WIDTH - 20 - 166} y={barY + 58} width={156} height={56} rx={8} fill={INK} />
+            <text x={WIDTH - 20 - 88} y={barY + 92} textAnchor="middle" fontSize={18} fill={GROUND} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
               Look closer
             </text>
           </g>}
