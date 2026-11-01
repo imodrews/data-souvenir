@@ -88,12 +88,14 @@ const MONO: CSSProperties = { fontFamily: MONO_FONT, fontVariationSettings: '"MO
 const GLASS: CSSProperties = { backgroundColor: "rgba(239, 239, 232, 0.05)", boxShadow: "inset 1px 1px 5px rgba(239, 239, 232, 0.4)" };
 
 /* ---------- Marks ---------- */
-const DOT_RADIUS = 7;
-const FIRST_RING = 13; // one ring per return visit
-const RING_GAP = 6;
-const LABEL_SIZE = 15;
-const CARD_WIDTH = 118;
-const CARD_HEIGHT = 148;
+const DOT_RADIUS = 22;
+const FIRST_RING = 23; // one ring per return visit
+const RING_GAP = 10;
+const LABEL_SIZE = 18;
+const DOT_IMAGE_WIDTH = 54;
+const DOT_IMAGE_HEIGHT = 50;
+const CARD_WIDTH = 148;
+const CARD_HEIGHT = 184;
 const PHOTO_GAP = 12;
 const PHOTO_SPREAD = CARD_WIDTH + PHOTO_GAP;
 const BAR_HEIGHT = 92;
@@ -419,7 +421,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const expandedY = Math.max(28, (CANVAS_HEIGHT - expandedHeight - 80) / 2);
 
   return (
-    <div style={{ width: "100%", maxWidth: 520, margin: "0 auto", background: GROUND, color: INK, fontFamily: BODY_FONT }}>
+    <div style={{ width: "calc(100% + 24px)", maxWidth: 544, margin: "0 -12px", background: GROUND, color: INK, fontFamily: BODY_FONT }}>
       {mode === "final" && (
         <header style={{ padding: "20px 16px 4px" }}>
           <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
@@ -486,6 +488,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
         {/* Path */}
         <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.75}>
+          <g filter={`url(#${uid}-halo)`} opacity={0.38}>
+            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#ffffff" strokeWidth={11} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          </g>
           <g filter={`url(#${uid}-halo)`} opacity={0.2}>
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={8} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
@@ -494,6 +500,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#873c70" strokeWidth={4} strokeLinecap="round"
               pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
           </g>
+          {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#ffffff" strokeOpacity={0.85} strokeWidth={1.2} strokeLinecap="round"
+            pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
         </g>
 
         {/* Names: number + surname, always visible once the visitor has reached that artist */}
@@ -548,10 +556,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 fill="none" stroke={ringColor} strokeOpacity={lit ? 0.9 : 0.5} strokeWidth={1.4}
                 style={{ filter: `drop-shadow(0 0 3px ${ringColor}) drop-shadow(0 0 9px ${ringColor})` }} />
             ))}
-            <image className={`${uid}-ring`} href="/svg-dot-3.svg" x={dot.x - 15} y={dot.y - 14}
-              width={30} height={28} preserveAspectRatio="xMidYMid meet"
-              style={{ filter: lit ? `drop-shadow(0 0 4px ${ACCENT}) drop-shadow(0 0 14px ${ACCENT})` : "drop-shadow(0 0 4px rgba(239,239,232,0.35))" }} />
-            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={17} fill="none" stroke="transparent" pointerEvents="none"
+            <image className={`${uid}-ring`} href="/svg-dot-3.svg" x={dot.x - DOT_IMAGE_WIDTH / 2} y={dot.y - DOT_IMAGE_HEIGHT / 2}
+              width={DOT_IMAGE_WIDTH} height={DOT_IMAGE_HEIGHT} preserveAspectRatio="xMidYMid meet"
+              style={{ filter: lit
+                ? `drop-shadow(0 0 5px #fff) drop-shadow(0 0 13px rgba(255,255,255,0.85)) drop-shadow(0 0 18px ${ACCENT})`
+                : "drop-shadow(0 0 5px #fff) drop-shadow(0 0 13px rgba(255,255,255,0.75))" }} />
+            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={29} fill="none" stroke="transparent" pointerEvents="none"
               style={{ filter: `drop-shadow(0 0 3px ${ACCENT}) drop-shadow(0 0 9px ${ACCENT})` }} />
           </g>;
         })}
