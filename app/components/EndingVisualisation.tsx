@@ -1,55 +1,105 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import * as d3 from "d3";
 import gsap from "gsap";
 
 const WIDTH = 694;
-const HEIGHT = 900;
-const SELECTED_DOT_SIZE = WIDTH * 0.38;
-const ARTWORK_THUMBNAIL_WIDTH = 104;
-const ARTWORK_THUMBNAIL_HEIGHT = 126;
-const MODEL_WIDTH = 540.47;
-const MODEL_HEIGHT = 486.16;
-const MODEL_SCALE = WIDTH / MODEL_WIDTH;
-const MODEL_RENDER_WIDTH = MODEL_WIDTH * MODEL_SCALE;
-const MODEL_LEFT = (WIDTH - MODEL_RENDER_WIDTH) / 2;
-const MODEL_RENDER_HEIGHT = MODEL_HEIGHT * MODEL_SCALE;
-const MODEL_TOP = Math.min(110, HEIGHT - MODEL_RENDER_HEIGHT);
-const MODEL_FADE_START = 0.65;
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-type Coordinate = readonly [number, number];
-type FloorProjectionRow = readonly [floorY: number, left: Coordinate, right: Coordinate];
+/* ---------- Floor plan: isometric wireframe of the space, drawn in code ---------- */
+// Plan units: the hall is 10 wide (x) and 24 deep (y). The mezzanine covers y 0-8 at the back.
+const PLAN_SCALE = WIDTH / 358;
+const PLAN_TOP = 24;
+const SLAB_BOTTOM = 4.5;
+const SLAB_TOP = 4.9;
+const CANVAS_HEIGHT = Math.round(PLAN_TOP + 372 * PLAN_SCALE);
 
-const MODEL_FLOOR_ROWS: readonly FloorProjectionRow[] = [
-  [0, [131.91, 39.63], [438.31, 53.79]],
-  [48, [105.38, 99.23], [449.62, 115.71]],
-  [184, [128.14, 167.13], [444.29, 181.13]],
-  [231, [0.23, 456.55], [509.28, 485.91]],
-];
-
-function getModelPosition(floorX: number, floorY: number) {
-  const horizontal = Math.max(0, Math.min(1, floorX / 694));
-  const clampedFloorY = Math.max(0, Math.min(231, floorY));
-  let endRowIndex = MODEL_FLOOR_ROWS.findIndex(([rowY]) => clampedFloorY <= rowY);
-  if (endRowIndex < 1) endRowIndex = MODEL_FLOOR_ROWS.length - 1;
-  const [startY, startLeft, startRight] = MODEL_FLOOR_ROWS[endRowIndex - 1];
-  const [endY, endLeft, endRight] = MODEL_FLOOR_ROWS[endRowIndex];
-  const vertical = (clampedFloorY - startY) / (endY - startY);
-  const interpolateRow = (left: Coordinate, right: Coordinate): Coordinate => [
-    left[0] + (right[0] - left[0]) * horizontal,
-    left[1] + (right[1] - left[1]) * horizontal,
-  ];
-  const top = interpolateRow(startLeft, startRight);
-  const bottom = interpolateRow(endLeft, endRight);
+function iso(x: number, y: number, z = 0) {
   return {
-    x: MODEL_LEFT + (top[0] + (bottom[0] - top[0]) * vertical) * MODEL_SCALE,
-    y: MODEL_TOP + (top[1] + (bottom[1] - top[1]) * vertical) * MODEL_SCALE,
+    x: (203 + 14.4 * x - 8 * y) * PLAN_SCALE,
+    y: PLAN_TOP + (80 + 4.8 * x + 9.92 * y - 14.4 * z) * PLAN_SCALE,
   };
 }
 
+type Point = { x: number; y: number };
+const points = (...list: Point[]) => list.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+const line = (a: Point, b: Point) => `M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+
+const PLAN = (() => {
+  const steps = 12;
+  const run = 6 / steps;
+  const rise = SLAB_BOTTOM / steps;
+  const stringer = (x: number) => {
+    const profile: Point[] = [iso(x, 8, SLAB_BOTTOM)];
+    for (let i = 0; i < steps; i += 1) {
+      const z = SLAB_BOTTOM - (i + 1) * rise;
+      profile.push(iso(x, 8 + i * run, z), iso(x, 8 + (i + 1) * run, z));
+    }
+    return points(...profile);
+  };
+  const treads = Array.from({ length: steps }, (_, i) => {
+    const z = SLAB_BOTTOM - (i + 1) * rise;
+    return line(iso(4, 8 + i * run, z), iso(5.6, 8 + i * run, z));
+  }).join("");
+  return {
+    floor: points(iso(0, 0), iso(10, 0), iso(10, 24), iso(0, 24)),
+    columns: ([[10, 0], [0, 8], [10, 8]] as const).map(([x, y]) => line(iso(x, y), iso(x, y, SLAB_BOTTOM))).join(""),
+    stringers: [stringer(4), stringer(5.6)],
+    treads,
+    slabTop: points(iso(0, 0, SLAB_TOP), iso(10, 0, SLAB_TOP), iso(10, 8, SLAB_TOP), iso(0, 8, SLAB_TOP)),
+    slabFront: points(iso(0, 8, SLAB_TOP), iso(0, 8, SLAB_BOTTOM), iso(10, 8, SLAB_BOTTOM), iso(10, 8, SLAB_TOP)),
+    slabSide: points(iso(10, 0, SLAB_TOP), iso(10, 0, SLAB_BOTTOM), iso(10, 8, SLAB_BOTTOM), iso(10, 8, SLAB_TOP)),
+    upperLabel: { x: 290 * PLAN_SCALE, y: PLAN_TOP + 30 * PLAN_SCALE },
+    groundLabel: { x: 300 * PLAN_SCALE, y: PLAN_TOP + 222 * PLAN_SCALE },
+  };
+})();
+
+/* ---------- Where scan coordinates land in the drawing ---------- */
+// Same split as the calibration rows of the old 3-D-14.svg: floorY 0-184 is on the mezzanine,
+// 184-231 is the ground floor, from just under the mezzanine edge to the front wall.
+const FLOOR_X_MAX = 694;
+const FLOOR_Y_MEZZANINE_EDGE = 184;
+const FLOOR_Y_MAX = 231;
+
+function getModelPosition(floorX: number, floorY: number) {
+  const x = 0.6 + clamp(floorX / FLOOR_X_MAX, 0, 1) * 8.8;
+  const y = clamp(floorY, 0, FLOOR_Y_MAX);
+  if (y <= FLOOR_Y_MEZZANINE_EDGE) return iso(x, 0.6 + (y / FLOOR_Y_MEZZANINE_EDGE) * 6.8, SLAB_TOP);
+  return iso(x, 8.6 + ((y - FLOOR_Y_MEZZANINE_EDGE) / (FLOOR_Y_MAX - FLOOR_Y_MEZZANINE_EDGE)) * 14.8, 0);
+}
+
+type Coordinate = readonly [number, number];
 const MODEL_ENTRANCE_FLOOR: Coordinate = [694 * 0.46, 231];
 const MODEL_ENTRANCE_POSITION = getModelPosition(...MODEL_ENTRANCE_FLOOR);
+const ENTRANCE_LABEL_OFFSET = 24;
+
+/* ---------- Look ---------- */
+const GROUND = "#111111";
+const INK = "#EFEFE8";
+const INK_MUTED = "rgba(239, 239, 232, 0.62)";
+const ACCENT = "#B4A7FF"; // POI Lilac: only on what the visitor is focused on
+const ACCENT_TEXT = "#CFC6FF";
+const DISPLAY_FONT = "var(--font-recursive, 'Recursive'), 'Neue Haas Grotesk Text', sans-serif";
+const MONO_FONT = "var(--font-recursive, 'Recursive'), 'Neue Haas Grotesk Text Mono', monospace";
+const BODY_FONT = "var(--font-atkinson, 'Atkinson Hyperlegible Next'), 'Neue Haas Grotesk Text', sans-serif";
+const DISPLAY: CSSProperties = { fontFamily: DISPLAY_FONT, fontVariationSettings: '"CASL" 1', fontWeight: 700 };
+const MONO: CSSProperties = { fontFamily: MONO_FONT, fontVariationSettings: '"MONO" 1, "CASL" 1' };
+const GLASS: CSSProperties = { backgroundColor: "rgba(239, 239, 232, 0.05)", boxShadow: "inset 1px 1px 5px rgba(239, 239, 232, 0.4)" };
+
+/* ---------- Marks ---------- */
+const DOT_RADIUS = 7;
+const FIRST_RING = 13; // one ring per return visit
+const RING_GAP = 6;
+const LABEL_SIZE = 15;
+const CARD_WIDTH = 118;
+const CARD_HEIGHT = 148;
+const CARD_PADDING = 7;
+const CARD_PADDING_BOTTOM = 24;
+const CARD_SPREAD = 54;
+const CARD_TILT = 7;
+const BAR_HEIGHT = 92;
+
 
 type Group = "red" | "green" | "purple";
 type JourneyItem = {
@@ -75,15 +125,12 @@ export type JourneyEncounter = {
   y: number | null;
 };
 
-const LABEL_FONT_SIZE = 20;
-const LABEL_LINE_HEIGHT = 28;
-const GROUP_LABELS: Record<Group, string> = {
-  red: "Sichtbarkeit des Ungesehenen, \u00bbNicht-Pr\u00e4senz\u00ab",
-  green: "Erinnerungskultur, Trauma und verdr\u00e4ngteGeschichte(n)",
-  purple: "Realit\u00e4t oder Simulation \u2013das Spiel mit der Wahrnehmung, Passagen M\u00f6glichen",
-};
 const GROUP_ORDER: readonly Group[] = ["red", "green", "purple"];
-const GROUP_VERTICAL_OFFSETS: Record<Group, number> = { red: -90, green: 0, purple: 40 };
+const THEMES: Record<Group, { short: string; full: string }> = {
+  red: { short: "Nicht-Präsenz", full: "Sichtbarkeit des Ungesehenen, »Nicht-Präsenz«" },
+  green: { short: "Erinnerung", full: "Erinnerungskultur, Trauma und verdrängte Geschichte(n)" },
+  purple: { short: "Simulation", full: "Realität oder Simulation – das Spiel mit der Wahrnehmung, Passagen Möglichen" },
+};
 const ARTWORK_FILES = [
   "/artwork/01a_Lisa%20Mazenauer_The%20Right%20To%20Forget.jpg",
   "/artwork/01b_Lisa%20Mazenauer_The%20Right%20To%20Forget.jpg",
@@ -115,56 +162,54 @@ function getArtworkTitle(path: string) {
   return filename.replace(/^\d+[a-z]_[^_]+_/, "").replace(/\.[^.]+$/, "").replace("Good Lucj", "Good Luck");
 }
 
-function getArtworkTitleLines(path: string) {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of getArtworkTitle(path).split(/\s+/)) {
-    if (line && line.length + word.length + 1 > 18) {
-      lines.push(line);
-      line = "";
-    }
-    let remaining = word;
-    while (remaining.length > 18) {
-      lines.push(remaining.slice(0, 18));
-      remaining = remaining.slice(18);
-    }
-    line = line ? `${line} ${remaining}` : remaining;
-  }
-  if (line) lines.push(line);
-  return lines;
+function truncate(text: string, maxCharacters: number) {
+  return text.length > maxCharacters ? `${text.slice(0, maxCharacters - 1).trimEnd()}…` : text;
 }
 
-function getGroupLabelLayout(section: { x: number; y: number; size: number }[], group: Group) {
-  const minX = Math.min(...section.map((item) => item.x - item.size * 0.825));
-  const maxX = Math.max(...section.map((item) => item.x + item.size * 0.825));
-  const minY = Math.min(...section.map((item) => item.y - item.size * 0.825));
-  const maxY = Math.max(...section.map((item) => item.y + item.size * 0.825));
-  const centerX = (minX + maxX) / 2;
-  const maxCharacters = Math.max(1, Math.floor((WIDTH - 48) / (LABEL_FONT_SIZE * 0.6)));
-  const lines: string[] = [];
-  let line = "";
-  for (const word of GROUP_LABELS[group].split(/\s+/)) {
-    if (line && line.length + word.length + 1 > maxCharacters) {
-      lines.push(line);
-      line = "";
-    }
-    let remaining = word;
-    while (remaining.length > maxCharacters) {
-      lines.push(remaining.slice(0, maxCharacters));
-      remaining = remaining.slice(maxCharacters);
-    }
-    line = line ? `${line} ${remaining}` : remaining;
+function surname(artist: string) {
+  return artist.trim().split(/\s+/).at(-1) ?? artist;
+}
+
+function outerRadius(visits: number) {
+  return visits > 1 ? FIRST_RING + RING_GAP * (visits - 2) : DOT_RADIUS;
+}
+
+type Box = readonly [x0: number, y0: number, x1: number, y1: number];
+type LabelPlacement = { x: number; y: number; anchor: "start" | "middle" | "end" };
+const overlaps = (a: Box, b: Box) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+
+// Puts each name below, above, right or left of its dot, whichever is free first.
+function placeLabels(dots: { id: string; x: number; y: number; visits: number; text: string }[]) {
+  const dotBoxes = new Map<string, Box>(dots.map((dot) => {
+    const r = outerRadius(dot.visits) + 2;
+    return [dot.id, [dot.x - r, dot.y - r, dot.x + r, dot.y + r]] as const;
+  }));
+  // Keep names off the ENTRANCE label.
+  const entranceHalfWidth = 8 * 12 * 0.6 / 2 + 4;
+  const placedBoxes: Box[] = [[
+    MODEL_ENTRANCE_POSITION.x - entranceHalfWidth, MODEL_ENTRANCE_POSITION.y - 8,
+    MODEL_ENTRANCE_POSITION.x + entranceHalfWidth, MODEL_ENTRANCE_POSITION.y + ENTRANCE_LABEL_OFFSET + 4,
+  ]];
+  const result = new Map<string, LabelPlacement>();
+  for (const dot of dots) {
+    const offset = outerRadius(dot.visits) + 6;
+    const width = dot.text.length * LABEL_SIZE * 0.6;
+    const height = LABEL_SIZE;
+    const candidates: { placement: LabelPlacement; box: Box }[] = [
+      { placement: { x: dot.x, y: dot.y + offset + height * 0.8, anchor: "middle" }, box: [dot.x - width / 2, dot.y + offset, dot.x + width / 2, dot.y + offset + height] },
+      { placement: { x: dot.x, y: dot.y - offset - 3, anchor: "middle" }, box: [dot.x - width / 2, dot.y - offset - height, dot.x + width / 2, dot.y - offset] },
+      { placement: { x: dot.x + offset, y: dot.y + height * 0.35, anchor: "start" }, box: [dot.x + offset, dot.y - height / 2, dot.x + offset + width, dot.y + height / 2] },
+      { placement: { x: dot.x - offset, y: dot.y + height * 0.35, anchor: "end" }, box: [dot.x - offset - width, dot.y - height / 2, dot.x - offset, dot.y + height / 2] },
+    ];
+    const free = candidates.find(({ box }) =>
+      box[0] >= 4 && box[2] <= WIDTH - 4 && box[1] >= 4 && box[3] <= CANVAS_HEIGHT - 4
+      && !placedBoxes.some((other) => overlaps(box, other))
+      && ![...dotBoxes].some(([id, other]) => id !== dot.id && overlaps(box, other)));
+    const chosen = free ?? candidates[0];
+    placedBoxes.push(chosen.box);
+    result.set(dot.id, chosen.placement);
   }
-  if (line) lines.push(line);
-  const longestLineWidth = Math.max(...lines.map((labelLine) => labelLine.length * LABEL_FONT_SIZE * 0.6));
-  const x = Math.max(24 + longestLineWidth / 2, Math.min(WIDTH - 24 - longestLineWidth / 2, centerX));
-  let y = minY - 12 - (lines.length - 1) * LABEL_LINE_HEIGHT;
-  if (y - LABEL_FONT_SIZE < 24) y = maxY + LABEL_FONT_SIZE + 8;
-  return {
-    x, y, lines,
-    top: Math.min(minY, y - LABEL_FONT_SIZE),
-    bottom: Math.max(maxY, y + (lines.length - 1) * LABEL_LINE_HEIGHT + 8),
-  };
+  return result;
 }
 
 type JourneyVisualisationProps = {
@@ -173,18 +218,21 @@ type JourneyVisualisationProps = {
 };
 
 export default function EndingVisualisation({ encounters, mode }: JourneyVisualisationProps) {
-  const filterId = useId().replaceAll(":", "");
-  const [stage, setStage] = useState<"model" | "journey" | "complete">("model");
-  const [modelProgress, setModelProgress] = useState(0);
+  // Strip every character that is not safe in an SVG id.
+  const uid = `poi${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const [stage, setStage] = useState<"journey" | "complete">("journey");
   const [journeyProgress, setJourneyProgress] = useState(0);
-  const [labelsProgress, setLabelsProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [front, setFront] = useState(0);
+  const [openProgress, setOpenProgress] = useState(0);
   const [expandedArtwork, setExpandedArtwork] = useState<{ path: string; width: number; height: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [zoomProgress, setZoomProgress] = useState(0);
+  const [themeFilter, setThemeFilter] = useState<Group | null>(null);
+  const [keyHidden, setKeyHidden] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
-  const zoomTween = useRef<gsap.core.Tween | null>(null);
-  const zoomValue = useRef({ value: 0 });
+  const timelineRef = useRef<gsap.core.Timeline | null>(null);
+  const openTween = useRef<gsap.core.Tween | null>(null);
+  const openValue = useRef({ value: 0 });
 
   const items = useMemo(() => {
     const uniqueArtworks = new Map<string, JourneyItem>();
@@ -202,7 +250,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           floorX: Number(encounter.x),
           floorY: Number(encounter.y),
           x: Number(encounter.x),
-          y: 65 + (Number(encounter.y) / 231) * (HEIGHT - 130),
+          y: Number(encounter.y),
           encounterIndexes: [encounterIndex],
         });
       }
@@ -213,84 +261,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
   const encounterCount = items.reduce((count, item) => count + item.encounterIndexes.length, 0);
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
-  const modelFadeProgress = Math.max(0, Math.min(1, (modelProgress - MODEL_FADE_START) / (1 - MODEL_FADE_START)));
-  const modelFadeOpacity = 1 - modelFadeProgress;
-  const journeyMarkSize = 140;
+  const interactive = mode === "final" && stage === "complete";
 
-  const positioned = useMemo(() => {
-    const dataMinX = Math.min(...items.map((item) => item.x));
-    const dataMaxX = Math.max(...items.map((item) => item.x));
-    const dataMinY = Math.min(...items.map((item) => item.y));
-    const dataMaxY = Math.max(...items.map((item) => item.y));
-    const margin = Math.max(30, journeyMarkSize / 2 + 12);
-    const fitCoordinate = (value: number, min: number, max: number, extent: number) => {
-      if (max <= min) return extent / 2;
-      const fittedSpan = (extent - margin * 2) * 0.9;
-      return (extent - fittedSpan) / 2 + ((value - min) / (max - min)) * fittedSpan;
-    };
-    const purpleXCoordinates = items
-      .filter((item) => item.group === "purple")
-      .map((item) => fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH));
-    const purpleOffsetX = purpleXCoordinates.length
-      ? WIDTH / 2 - (Math.min(...purpleXCoordinates) + Math.max(...purpleXCoordinates)) / 2
-      : 0;
-    const journeyItems = items.map((item) => ({
-      ...item,
-      x: fitCoordinate(item.x, dataMinX, dataMaxX, WIDTH) + (mode === "final" && item.group === "purple" ? purpleOffsetX : 0),
-      y: fitCoordinate(item.y, dataMinY, dataMaxY, HEIGHT),
-    }));
-    const minCenterDistance = journeyMarkSize * 0.82 + 8;
-    const visibleHalfSize = journeyMarkSize * 0.82 / 2;
-    const minX = visibleHalfSize + 8;
-    const maxX = WIDTH - minX;
-    const minY = visibleHalfSize + 8;
-    const maxY = HEIGHT - minY;
-    for (let pass = 0; pass < 60; pass += 1) {
-      let moved = false;
-      for (let firstIndex = 0; firstIndex < journeyItems.length; firstIndex += 1) {
-        for (let secondIndex = firstIndex + 1; secondIndex < journeyItems.length; secondIndex += 1) {
-          const first = journeyItems[firstIndex];
-          const second = journeyItems[secondIndex];
-          let dx = second.x - first.x;
-          let dy = second.y - first.y;
-          let distance = Math.hypot(dx, dy);
-          if (distance >= minCenterDistance) continue;
-          if (distance < 0.001) {
-            const angle = ((firstIndex + secondIndex) % 8) * (Math.PI / 4);
-            dx = Math.cos(angle);
-            dy = Math.sin(angle);
-            distance = 1;
-          }
-          const push = (minCenterDistance - distance) / 2;
-          first.x -= (dx / distance) * push;
-          first.y -= (dy / distance) * push;
-          second.x += (dx / distance) * push;
-          second.y += (dy / distance) * push;
-          moved = true;
-        }
-      }
-      journeyItems.forEach((item) => {
-        item.x = Math.max(minX, Math.min(maxX, item.x));
-        item.y = Math.max(minY, Math.min(maxY, item.y));
-      });
-      if (!moved) break;
-    }
-    if (mode === "final") {
-      journeyItems.forEach((item) => {
-        const groupOffset = GROUP_VERTICAL_OFFSETS[item.group] + (item.group === "purple" ? 55 : 0);
-        item.y = Math.max(minY, Math.min(maxY, item.y + groupOffset));
-      });
-    }
-    return journeyItems;
-  }, [items, journeyMarkSize, mode]);
-
+  // Spread marks that sit too close together on the floor (unchanged logic).
   const modelPositions = useMemo(() => {
-    const modelItems = items.map((item) => ({
-      ...item,
-      modelFloorX: item.floorX,
-      modelFloorY: item.floorY,
-    }));
-    const minHorizontalDistance = journeyMarkSize;
+    const modelItems = items.map((item) => ({ ...item, modelFloorX: item.floorX, modelFloorY: item.floorY }));
+    const minHorizontalDistance = 140;
     for (let pass = 0; pass < 60; pass += 1) {
       let moved = false;
       for (let firstIndex = 0; firstIndex < modelItems.length; firstIndex += 1) {
@@ -308,115 +284,39 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       }
       if (!moved) break;
     }
-    return new Map(modelItems.map((item) => [
-      item.scanId,
-      { ...getModelPosition(item.modelFloorX, item.modelFloorY), floorX: item.modelFloorX, floorY: item.modelFloorY },
-    ] as const));
-  }, [items, journeyMarkSize]);
-  const canvasHeight = useMemo(() => {
-    if (mode === "live") return HEIGHT;
-    const groupBottoms = GROUP_ORDER.flatMap((group) => {
-      const section = positioned
-        .filter((item) => item.group === group)
-        .map((item) => ({ ...item, size: journeyMarkSize * 0.4 }));
-      return section.length ? [getGroupLabelLayout(section, group).bottom + 24] : [];
-    });
-    return Math.max(HEIGHT, ...groupBottoms);
-  }, [positioned, journeyMarkSize, mode]);
+    return new Map(modelItems.map((item) => [item.scanId, getModelPosition(item.modelFloorX, item.modelFloorY)] as const));
+  }, [items]);
 
-  useEffect(() => {
-    if (mode === "live" || !items.length) return;
-    let timeline: gsap.core.Timeline | undefined;
-    const frame = requestAnimationFrame(() => {
-      setStage("model");
-      setModelProgress(0);
-      setJourneyProgress(0);
-      setLabelsProgress(0);
-      setSelected(null);
-      setExpandedArtwork(null);
-      setHovered(null);
-      setZoomProgress(0);
-      zoomValue.current.value = 0;
-      zoomTween.current?.kill();
-      const values = { model: 0, journey: 0 };
-      timeline = gsap.timeline();
-      timeline.to(values, {
-        journey: encounterCount,
-        duration: Math.max(1.2, encounterCount * 1.0),
-        ease: "none",
-        onUpdate: () => setJourneyProgress(values.journey),
-      });
-      timeline.call(() => setStage("journey"));
-      timeline.to(values, {
-        model: 1,
-        duration: 2.2,
-        ease: "power2.inOut",
-        onUpdate: () => {
-          setModelProgress(values.model);
-          setLabelsProgress(values.model);
-        },
-      });
-      timeline.call(() => setStage("complete"));
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-      timeline?.kill();
-    };
-  }, [items, encounterCount, replayKey, mode]);
+  // Every mark stays where its artwork is in the building.
+  const dots = useMemo(() => items.map((item, index) => {
+    const position = modelPositions.get(item.scanId)!;
+    return { ...item, x: position.x, y: position.y, order: String(index + 1).padStart(2, "0"), visits: item.encounterIndexes.length };
+  }), [items, modelPositions]);
 
-  useEffect(() => () => { zoomTween.current?.kill(); }, []);
+  const labels = useMemo(
+    () => placeLabels(dots.map((dot) => ({ id: dot.scanId, x: dot.x, y: dot.y, visits: dot.visits, text: `${dot.order} ${surname(dot.artist)}` }))),
+    [dots],
+  );
 
-  function showArtwork(path: string) {
-    const image = new window.Image();
-    image.onload = () => setExpandedArtwork({ path, width: image.naturalWidth, height: image.naturalHeight });
-    image.src = path;
-  }
-
-  function enterOrExit(scanId: string) {
-    if (mode === "live" || stage !== "complete") return;
-    zoomTween.current?.kill();
-    if (selected === scanId) {
-      zoomTween.current = gsap.to(zoomValue.current, {
-        value: 0, duration: 0.9, ease: "power3.inOut",
-        onUpdate: () => setZoomProgress(zoomValue.current.value),
-        onComplete: () => {
-          setSelected(null);
-          setExpandedArtwork(null);
-        },
-      });
-    } else if (!selected) {
-      setSelected(scanId);
-      zoomTween.current = gsap.to(zoomValue.current, {
-        value: 1, duration: 0.9, ease: "power3.inOut",
-        onUpdate: () => setZoomProgress(zoomValue.current.value),
-      });
-    }
-  }
-
-  const displayedItems = useMemo(() => positioned.map((item) => {
-    const modelPosition = modelPositions.get(item.scanId)!;
-    if (mode === "live") {
-      return { ...item, x: modelPosition.x, y: modelPosition.y, size: journeyMarkSize * 0.4 };
-    }
-    const itemIndex = positioned.findIndex((positionedItem) => positionedItem.scanId === item.scanId);
-    const stagger = positioned.length > 1 ? 0.38 * itemIndex / (positioned.length - 1) : 0;
-    const liftProgress = Math.max(0, Math.min(1, (modelProgress - stagger) / (1 - stagger)));
-    const journeyX = d3.interpolateNumber(modelPosition.x, item.x)(liftProgress);
-    const journeyY = d3.interpolateNumber(modelPosition.y, item.y)(liftProgress);
+  const themeStats = useMemo(() => GROUP_ORDER.map((group) => {
+    const inGroup = dots.filter((dot) => dot.group === group);
     return {
-      ...item,
-      x: journeyX,
-      y: journeyY,
-      size: journeyMarkSize * 0.4,
+      group,
+      artists: new Set(inGroup.map((dot) => dot.artist)).size,
+      encounters: inGroup.reduce((count, dot) => count + dot.visits, 0),
     };
-  }), [positioned, modelPositions, journeyMarkSize, modelProgress, mode]);
+  }).filter((stat) => stat.artists > 0), [dots]);
+  const topGroup = themeStats.reduce<(typeof themeStats)[number] | null>(
+    (best, stat) => (!best || stat.encounters > best.encounters ? stat : best), null)?.group ?? null;
+  const artistCount = new Set(items.map((item) => item.artist)).size;
+
   const pathSegments = useMemo(() => {
-    const encounterSequence = displayedItems
+    const encounterSequence = dots
       .flatMap((item) => item.encounterIndexes.map((encounterIndex) => ({ item, encounterIndex })))
       .sort((first, second) => first.encounterIndex - second.encounterIndex);
     const entranceSegment = encounterSequence[0]
       ? d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-        .curve(d3.curveBumpY)([[MODEL_ENTRANCE_POSITION.x, MODEL_ENTRANCE_POSITION.y], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
+        .curve(d3.curveLinear)([[MODEL_ENTRANCE_POSITION.x, MODEL_ENTRANCE_POSITION.y], [encounterSequence[0].item.x, encounterSequence[0].item.y]])
       : null;
     return [
       ...(entranceSegment ? [{ d: entranceSegment, index: 0 }] : []),
@@ -424,156 +324,344 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         const next = encounterSequence[index + 1];
         if (!next) return [];
         const segment = d3.line<[number, number]>().x((point) => point[0]).y((point) => point[1])
-          .curve(d3.curveBumpX)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
+          .curve(d3.curveLinear)([[visit.item.x, visit.item.y], [next.item.x, next.item.y]]);
         return segment ? [{ d: segment, index: index + 1 }] : [];
       }),
     ];
-  }, [displayedItems]);
+  }, [dots]);
+
+  // Replay: draw the path through the building, one encounter at a time.
+  useEffect(() => {
+    if (mode === "live" || !items.length) return;
+    let timeline: gsap.core.Timeline | undefined;
+    const frame = requestAnimationFrame(() => {
+      setStage("journey");
+      setJourneyProgress(0);
+      setSelected(null);
+      setExpandedArtwork(null);
+      setHovered(null);
+      setOpenProgress(0);
+      openValue.current.value = 0;
+      openTween.current?.kill();
+      const values = { journey: 0 };
+      timeline = gsap.timeline({ onComplete: () => setStage("complete") });
+      timeline.to(values, {
+        journey: encounterCount,
+        duration: Math.max(1.2, encounterCount * 0.6),
+        ease: "none",
+        onUpdate: () => setJourneyProgress(values.journey),
+      });
+      timelineRef.current = timeline;
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      timeline?.kill();
+    };
+  }, [items, encounterCount, replayKey, mode]);
+
+  useEffect(() => () => { openTween.current?.kill(); }, []);
+
+  function skipReplay() {
+    timelineRef.current?.progress(1);
+  }
+
+  function showArtwork(path: string) {
+    const image = new window.Image();
+    image.onload = () => setExpandedArtwork({ path, width: image.naturalWidth, height: image.naturalHeight });
+    image.src = path;
+  }
+
+  function openCollection(scanId: string) {
+    if (!interactive) return;
+    openTween.current?.kill();
+    setExpandedArtwork(null);
+    setFront(0);
+    setSelected(scanId);
+    openValue.current.value = 0;
+    openTween.current = gsap.to(openValue.current, {
+      value: 1, duration: 0.6, ease: "power3.out",
+      onUpdate: () => setOpenProgress(openValue.current.value),
+    });
+  }
+
+  function closeCollection() {
+    if (!selected) return;
+    openTween.current?.kill();
+    setExpandedArtwork(null);
+    openTween.current = gsap.to(openValue.current, {
+      value: 0, duration: 0.4, ease: "power2.in",
+      onUpdate: () => setOpenProgress(openValue.current.value),
+      onComplete: () => setSelected(null),
+    });
+  }
 
   if (!items.length) return <p>No artwork scans with positions found for this session.</p>;
 
+  /* ---------- Collection fan ---------- */
+  const selectedDot = selected ? dots.find((dot) => dot.scanId === selected) ?? null : null;
+  const collection = selectedDot ? getArtistArtworkFiles(selectedDot.artist) : [];
+  const fanWidth = (collection.length - 1) * CARD_SPREAD + CARD_WIDTH;
+  const fanCenterX = selectedDot ? clamp(selectedDot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12) : 0;
+  const fanCenterY = selectedDot
+    ? clamp(
+      selectedDot.y < CANVAS_HEIGHT * 0.45 ? selectedDot.y + 150 : selectedDot.y - 150,
+      CARD_HEIGHT / 2 + 24,
+      CANVAS_HEIGHT - BAR_HEIGHT - 20 - CARD_HEIGHT / 2 - 16,
+    )
+    : 0;
+  const frontPath = collection[Math.min(front, collection.length - 1)] ?? null;
+  const barY = CANVAS_HEIGHT - BAR_HEIGHT - 10;
+
+  const expandedScale = expandedArtwork
+    ? Math.min((WIDTH * 0.84) / expandedArtwork.width, (CANVAS_HEIGHT * 0.7) / expandedArtwork.height)
+    : 0;
+  const expandedWidth = expandedArtwork ? expandedArtwork.width * expandedScale : 0;
+  const expandedHeight = expandedArtwork ? expandedArtwork.height * expandedScale : 0;
+  const expandedX = (WIDTH - expandedWidth) / 2;
+  const expandedY = Math.max(28, (CANVAS_HEIGHT - expandedHeight - 80) / 2);
+
   return (
-    <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
-      <svg viewBox={`0 0 ${WIDTH} ${canvasHeight}`} width="100%" preserveAspectRatio="xMidYMid meet"
-        style={{ display: "block", width: "100%", height: "auto", aspectRatio: `${WIDTH} / ${canvasHeight}`, background: "var(--background)", overflow: "hidden" }}
-        onClick={() => { if (selected) enterOrExit(selected); }}
-        aria-label={mode === "live" ? "Visitor journey" : "Visitor journey and interactive constellation"}>
-        <defs>
-          <filter id={`${filterId}-halo`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
-            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
-            <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
-            <feGaussianBlur in="organic" stdDeviation="9" />
-          </filter>
-          <filter id={`${filterId}-soft`} x="0" y="0" width={WIDTH} height={canvasHeight} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
-            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
-            <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
-            <feGaussianBlur in="organic" stdDeviation="3" />
-          </filter>
-        </defs>
-        <image href="/3-D-14.svg" x={MODEL_LEFT} y={MODEL_TOP} width={MODEL_RENDER_WIDTH} height={MODEL_RENDER_HEIGHT}
-          preserveAspectRatio="none" opacity={mode === "final" ? modelFadeOpacity : 1} pointerEvents="none" />
-        {(mode === "live" || stage === "model") && <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y - 12} textAnchor="middle" fill="#e1dfd2" fontSize="12"
-          pointerEvents="none">entrance</text>}
-        <g opacity={0.85} pointerEvents="none">
-          <g filter={`url(#${filterId}-halo)`} opacity={0.38}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={8} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
-          </g>
-          <g filter={`url(#${filterId}-soft)`} opacity={0.45}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke="#c45b9c" strokeWidth={4} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
-          </g>
+    <div style={{ width: "100%", maxWidth: 520, margin: "0 auto", background: GROUND, color: INK, fontFamily: BODY_FONT }}>
+      {mode === "final" && (
+        <header style={{ padding: "20px 16px 4px" }}>
+          <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
+            YOUR VISIT · {artistCount} {artistCount === 1 ? "ARTIST" : "ARTISTS"} · {encounterCount} {encounterCount === 1 ? "ENCOUNTER" : "ENCOUNTERS"}
+          </p>
+          {topGroup && (
+            <h2 style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
+              Most of your encounters were with <span style={{ color: ACCENT_TEXT }}>{THEMES[topGroup].short}</span>.
+            </h2>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button type="button" onClick={() => (stage === "complete" ? setReplayKey((value) => value + 1) : skipReplay())}
+              style={{ ...GLASS, height: 44, padding: "0 14px", border: 0, borderRadius: 8, color: INK, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+              {stage === "complete" ? "↻ Replay your path" : "Skip »"}
+            </button>
+          </div>
+        </header>
+      )}
+
+      <svg viewBox={`0 0 ${WIDTH} ${CANVAS_HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
+        style={{ display: "block", width: "100%", height: "auto", aspectRatio: `${WIDTH} / ${CANVAS_HEIGHT}`, background: GROUND, overflow: "hidden" }}
+        onClick={() => { if (expandedArtwork) setExpandedArtwork(null); else closeCollection(); }}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          if (expandedArtwork) setExpandedArtwork(null); else closeCollection();
+        }}
+        aria-label={mode === "live" ? "Visitor journey" : "Your path through the exhibition. Select an artist to see their works."}>
+        <style>{`
+          .${uid}-focus:focus { outline: none; }
+          .${uid}-focus:focus-visible .${uid}-ring { stroke: ${ACCENT}; stroke-width: 3; }
+        `}</style>
+
+        {/* Isometric floor plan of the space, always visible */}
+        <g pointerEvents="none" fill="none" stroke={INK} strokeOpacity={0.3} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round">
+          <polygon points={PLAN.floor} />
+          <path d={PLAN.columns} />
+          {PLAN.stringers.map((stringer, index) => <polyline key={index} points={stringer} strokeWidth={1.2} />)}
+          <path d={PLAN.treads} strokeWidth={1.2} />
+          <polygon points={PLAN.slabTop} fill={GROUND} />
+          <polygon points={PLAN.slabFront} fill={GROUND} />
+          <polygon points={PLAN.slabSide} fill={GROUND} />
         </g>
-        {mode === "final" && GROUP_ORDER.map((group) => {
-          const section = displayedItems.filter((item) => item.group === group);
-          if (!section.length) return null;
-          const label = getGroupLabelLayout(section, group);
-          const labelProgress = Math.max(0, Math.min(1, labelsProgress));
-          const labelScale = 0.9 + labelProgress * 0.1;
-          return <g key={group} opacity={labelProgress * (selected ? 1 - zoomProgress : 1)}
-            transform={`translate(${label.x} ${label.y}) scale(${labelScale}) translate(${-label.x} ${-label.y})`} pointerEvents="none">
-            <text x={label.x} y={label.y} textAnchor="middle" fill="#e1dfd2" fontSize={LABEL_FONT_SIZE}>
-              {label.lines.map((line, index) => <tspan key={index} x={label.x} dy={index === 0 ? 0 : LABEL_LINE_HEIGHT}>{line}</tspan>)}
-            </text>
-          </g>;
-        })}
-        {displayedItems.map((item) => {
-          const completedEncounters = item.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
-          const brightness = Math.max(0.45, 1 - Math.max(0, completedEncounters - 1) * 0.18);
-          const active = selected === item.scanId;
-          const displayX = active ? d3.interpolateNumber(item.x, WIDTH / 2)(zoomProgress) : item.x;
-          const displayY = active ? d3.interpolateNumber(item.y, canvasHeight / 2)(zoomProgress) : item.y;
-          const displaySize = active ? d3.interpolateNumber(item.size, SELECTED_DOT_SIZE)(zoomProgress) : item.size;
-          const artworkFiles = active ? getArtistArtworkFiles(item.artist) : [];
-          const artworkRadius = Math.min(WIDTH * 0.46, canvasHeight * 0.36);
-          const artistScale = displaySize / item.size;
-          const baseArtistFontSize = Math.max(6, Math.min(10, item.size * 0.105));
-          const artistFontSize = baseArtistFontSize * artistScale;
-          const artistTextWidth = Math.min(item.size * 0.72, item.artist.length * baseArtistFontSize * 0.6) * artistScale;
-          const expandedImageScale = expandedArtwork
-            ? Math.min(WIDTH * 0.84 / expandedArtwork.width, canvasHeight * 0.72 / expandedArtwork.height)
-            : 0;
-          const expandedImageWidth = expandedArtwork ? expandedArtwork.width * expandedImageScale : 0;
-          const expandedImageHeight = expandedArtwork ? expandedArtwork.height * expandedImageScale : 0;
-          const expandedImageX = (WIDTH - expandedImageWidth) / 2;
-          const expandedImageY = Math.max(28, (canvasHeight - expandedImageHeight - 74) / 2);
-          return <g key={item.scanId} opacity={!selected || active ? 1 : 1 - zoomProgress}
-            style={{ cursor: mode === "final" && stage === "complete" ? "pointer" : "default" }}
-            pointerEvents={selected && !active ? "none" : "auto"}
-            onMouseEnter={() => { if (mode === "final" && stage === "complete") setHovered(item.scanId); }}
+        <g pointerEvents="none" fill={INK} fillOpacity={0.45} fontSize={14} letterSpacing={1.5} style={MONO}>
+          <text x={PLAN.upperLabel.x} y={PLAN.upperLabel.y}>LEVEL 2</text>
+          <text x={PLAN.groundLabel.x} y={PLAN.groundLabel.y}>LEVEL 1</text>
+        </g>
+        <g pointerEvents="none">
+          <circle cx={MODEL_ENTRANCE_POSITION.x} cy={MODEL_ENTRANCE_POSITION.y} r={4} fill="none" stroke={INK} strokeWidth={1.4} />
+          <text x={MODEL_ENTRANCE_POSITION.x} y={MODEL_ENTRANCE_POSITION.y + ENTRANCE_LABEL_OFFSET} textAnchor="middle" fill={INK} fillOpacity={0.5}
+            fontSize={12} letterSpacing={1.5} style={MONO}>ENTRANCE</text>
+        </g>
+
+        {/* Path */}
+        <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.75}>
+          {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke={INK} strokeOpacity={index === 0 ? 0.5 : 1}
+            strokeWidth={1.6} strokeLinecap="round" pathLength={1} strokeDasharray="1"
+            strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+        </g>
+
+        {/* Names: number + surname, always visible once the visitor has reached that artist */}
+        <g pointerEvents="none">
+          {dots.map((dot) => {
+            const reached = dot.encounterIndexes.some((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1);
+            const lit = selected === dot.scanId || hovered === dot.scanId || themeFilter === dot.group;
+            const faded = themeFilter !== null && themeFilter !== dot.group;
+            const label = labels.get(dot.scanId)!;
+            return <text key={dot.scanId} x={label.x} y={label.y} textAnchor={label.anchor} fontSize={LABEL_SIZE}
+              fill={lit ? ACCENT_TEXT : INK} stroke={GROUND} strokeWidth={5} strokeLinejoin="round" paintOrder="stroke"
+              opacity={reached ? (faded ? 0.25 : 1) : 0} style={MONO}>
+              <tspan fill={INK_MUTED}>{dot.order}</tspan> {surname(dot.artist)}
+            </text>;
+          })}
+        </g>
+
+        {/* Dims the space while a collection is open; tap it to close */}
+        {selected && <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0.82 * openProgress}
+          onClick={(event) => { event.stopPropagation(); closeCollection(); }} />}
+
+        {/* Dots: one per artwork, a ring for every return visit */}
+        {dots.map((dot) => {
+          const completedVisits = dot.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
+          const active = selected === dot.scanId;
+          const lit = active || hovered === dot.scanId || (!selected && themeFilter === dot.group);
+          let opacity = completedVisits > 0 ? 1 : 0;
+          if (selected && !active) opacity *= 0.45;
+          else if (!selected && themeFilter && themeFilter !== dot.group) opacity *= 0.25;
+          return <g key={dot.scanId} className={`${uid}-focus`} opacity={opacity}
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : -1}
+            aria-label={`${dot.order}, ${dot.artist}, ${dot.name}, ${THEMES[dot.group].short}${dot.visits > 1 ? `, visited ${dot.visits} times` : ""}. Open their works.`}
+            style={{ cursor: interactive ? "pointer" : "default" }}
+            onMouseEnter={() => { if (interactive) setHovered(dot.scanId); }}
             onMouseLeave={() => setHovered(null)}
-            onClick={(event) => { event.stopPropagation(); enterOrExit(item.scanId); }}>
-            <title>{`${item.artist} \u2014 ${item.name}`}</title>
-            <image href="/svg-dot-3.svg" x={displayX - displaySize * 0.825} y={displayY - displaySize * 0.825}
-              width={displaySize * 1.65} height={displaySize * 1.65} preserveAspectRatio="xMidYMid meet"
-              style={{ filter: `brightness(${brightness}) drop-shadow(0 0 8px rgba(196, 91, 156, 0.5))` }} />
-            <g opacity={zoomProgress}>
-              {artworkFiles.map((path, index) => {
-                const angle = -Math.PI / 2 + (Math.PI * 2 * index) / artworkFiles.length;
-                const artworkX = displayX + Math.cos(angle) * artworkRadius;
-                const artworkY = displayY + Math.sin(angle) * artworkRadius;
-                const artworkScale = 0.8 + zoomProgress * 0.2;
-                const titleLines = getArtworkTitleLines(path);
-                return <g key={path} role="button" tabIndex={0} aria-label={`Enlarge ${getArtworkTitle(path)}`}
-                  style={{ cursor: "zoom-in" }}
-                  transform={`translate(${artworkX} ${artworkY}) scale(${artworkScale}) translate(${-artworkX} ${-artworkY})`}
-                  onClick={(event) => { event.stopPropagation(); showArtwork(path); }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      showArtwork(path);
-                    }
-                  }}>
-                  <image href={path} x={artworkX - ARTWORK_THUMBNAIL_WIDTH / 2} y={artworkY - ARTWORK_THUMBNAIL_HEIGHT / 2}
-                    width={ARTWORK_THUMBNAIL_WIDTH} height={ARTWORK_THUMBNAIL_HEIGHT} preserveAspectRatio="xMidYMid slice">
-                    <title>{getArtworkTitle(path)}</title>
-                  </image>
-                  <rect x={artworkX - ARTWORK_THUMBNAIL_WIDTH / 2} y={artworkY - ARTWORK_THUMBNAIL_HEIGHT / 2}
-                    width={ARTWORK_THUMBNAIL_WIDTH} height={ARTWORK_THUMBNAIL_HEIGHT} fill="none" stroke="#e1dfd2" strokeWidth="2" />
-                  <text x={artworkX} y={artworkY + ARTWORK_THUMBNAIL_HEIGHT / 2 + 13} textAnchor="middle"
-                    fill="#e1dfd2" stroke="var(--background)" strokeWidth="3" strokeLinejoin="round" paintOrder="stroke"
-                    fontSize="10" fontWeight="500" pointerEvents="none">
-                    {titleLines.map((line, lineIndex) => <tspan key={lineIndex} x={artworkX} dy={lineIndex === 0 ? 0 : 12}>{line}</tspan>)}
-                  </text>
-                </g>;
-              })}
-            </g>
-            <circle cx={displayX} cy={displayY} r={displaySize * 0.38} fill="transparent" />
-            {(active || hovered === item.scanId) && <text x={displayX} y={displayY} textAnchor="middle" dominantBaseline="central"
-              fill="#e1dfd2" fontFamily="Neue Haas Grotesk Text Mono" fontSize={artistFontSize} fontWeight={400}
-              textLength={artistTextWidth} lengthAdjust="spacingAndGlyphs" pointerEvents="none">
-              {item.artist}
-            </text>}
-            {active && expandedArtwork && <g role="dialog" aria-label={getArtworkTitle(expandedArtwork.path)}
-              onClick={(event) => { event.stopPropagation(); setExpandedArtwork(null); }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setExpandedArtwork(null);
-                }
-              }}>
-              <rect x="0" y="0" width={WIDTH} height={canvasHeight} fill="#111" opacity="0.92" />
-              <image href={expandedArtwork.path} x={expandedImageX} y={expandedImageY} width={expandedImageWidth} height={expandedImageHeight}
-                preserveAspectRatio="xMidYMid meet" />
-              <text x={WIDTH / 2} y={expandedImageY + expandedImageHeight + 30} textAnchor="middle" fill="#e1dfd2"
-                fontFamily="Neue Haas Grotesk Text Mono" fontSize="18" fontWeight="500">
-                {getArtworkTitle(expandedArtwork.path)}
-              </text>
-            </g>}
+            onFocus={() => { if (interactive) setHovered(dot.scanId); }}
+            onBlur={() => setHovered(null)}
+            onClick={(event) => { event.stopPropagation(); if (active) closeCollection(); else openCollection(dot.scanId); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                if (active) closeCollection(); else openCollection(dot.scanId);
+              }
+            }}>
+            <title>{`${dot.artist} — ${dot.name}`}</title>
+            <circle cx={dot.x} cy={dot.y} r={30} fill="transparent" />
+            {Array.from({ length: Math.max(0, completedVisits - 1) }, (_, ringIndex) => (
+              <circle key={ringIndex} className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={FIRST_RING + RING_GAP * ringIndex}
+                fill="none" stroke={lit ? ACCENT : INK} strokeOpacity={lit ? 0.9 : 0.5} strokeWidth={1.4} />
+            ))}
+            <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={DOT_RADIUS} fill={lit ? ACCENT : INK}
+              style={{ filter: lit ? `drop-shadow(0 0 4px ${ACCENT}) drop-shadow(0 0 14px ${ACCENT})` : `drop-shadow(0 0 4px rgba(239,239,232,0.35))` }} />
           </g>;
         })}
+
+        {/* Collection: the artist's works fan out of the dot like a small stack of photos */}
+        {selectedDot && collection.map((path, index) => {
+          const middle = index - (collection.length - 1) / 2;
+          const isFront = index === front;
+          const targetX = fanCenterX + middle * CARD_SPREAD;
+          const x = d3.interpolateNumber(selectedDot.x, targetX)(openProgress);
+          const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress) + (isFront ? -16 * openProgress : 0);
+          const rotation = isFront ? 0 : middle * CARD_TILT * openProgress;
+          const scale = (0.2 + 0.8 * openProgress) * (isFront ? 1 + 0.14 * openProgress : 1);
+          const title = getArtworkTitle(path);
+          return <g key={path} role="button" tabIndex={0} className={`${uid}-focus`}
+            aria-label={isFront ? `Enlarge ${title}` : `Bring ${title} to the front`}
+            opacity={Math.min(1, openProgress * 1.5)}
+            transform={`translate(${x} ${y}) rotate(${rotation}) scale(${scale})`}
+            style={{ cursor: isFront ? "zoom-in" : "pointer" }}
+            onClick={(event) => { event.stopPropagation(); if (isFront) showArtwork(path); else setFront(index); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                if (isFront) showArtwork(path); else setFront(index);
+              }
+            }}>
+            <rect x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2} width={CARD_WIDTH} height={CARD_HEIGHT} rx={3} fill={INK}
+              stroke={isFront ? ACCENT : "none"} strokeWidth={isFront ? 4 : 0}
+              style={{ filter: isFront ? `drop-shadow(0 0 16px rgba(180,167,255,0.6)) drop-shadow(0 10px 20px rgba(0,0,0,0.5))` : "drop-shadow(0 6px 14px rgba(0,0,0,0.5))" }} />
+            <image href={path} x={-CARD_WIDTH / 2 + CARD_PADDING} y={-CARD_HEIGHT / 2 + CARD_PADDING}
+              width={CARD_WIDTH - CARD_PADDING * 2} height={CARD_HEIGHT - CARD_PADDING - CARD_PADDING_BOTTOM}
+              preserveAspectRatio="xMidYMid slice" />
+          </g>;
+        })}
+
+        {/* Info bar for the card in front */}
+        {selectedDot && <g opacity={openProgress} onClick={(event) => event.stopPropagation()}>
+          <rect x={10} y={barY} width={WIDTH - 20} height={BAR_HEIGHT} rx={8} fill="#1E1E1E" fillOpacity={0.95}
+            stroke={ACCENT} strokeOpacity={0.7} strokeWidth={1.5} />
+          <text x={30} y={barY + 28} fontSize={14} fill={ACCENT_TEXT} style={MONO}>
+            {`${selectedDot.order} · ${surname(selectedDot.artist).toUpperCase()} · ${THEMES[selectedDot.group].short.toUpperCase()}${selectedDot.visits > 1 ? ` · ${selectedDot.visits} VISITS` : ""}`}
+          </text>
+          <text x={30} y={barY + 56} fontSize={22} fill={INK} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
+            {frontPath ? truncate(getArtworkTitle(frontPath), 36) : "No images for this artist yet"}
+          </text>
+          <text x={30} y={barY + 78} fontSize={13} fill={INK_MUTED} style={MONO}>
+            {collection.length ? `IMAGE ${front + 1} OF ${collection.length} · TAP A CARD TO BRING IT FORWARD` : ""}
+          </text>
+          {frontPath && <g role="button" tabIndex={0} className={`${uid}-focus`} aria-label={`Enlarge ${getArtworkTitle(frontPath)}`} style={{ cursor: "zoom-in" }}
+            onClick={(event) => { event.stopPropagation(); showArtwork(frontPath); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); showArtwork(frontPath); }
+            }}>
+            <rect x={WIDTH - 20 - 166} y={barY + 18} width={156} height={56} rx={8} fill={INK} />
+            <text x={WIDTH - 20 - 88} y={barY + 52} textAnchor="middle" fontSize={18} fill={GROUND} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
+              Look closer
+            </text>
+          </g>}
+        </g>}
+
+        {/* Enlarged artwork */}
+        {expandedArtwork && <g role="dialog" tabIndex={0} aria-label={getArtworkTitle(expandedArtwork.path)}
+          onClick={(event) => { event.stopPropagation(); setExpandedArtwork(null); }}>
+          <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0.96} />
+          <image href={expandedArtwork.path} x={expandedX} y={expandedY} width={expandedWidth} height={expandedHeight} preserveAspectRatio="xMidYMid meet" />
+          <rect x={expandedX} y={expandedY} width={expandedWidth} height={expandedHeight} fill="none" stroke={INK} strokeOpacity={0.2} strokeWidth={1.5} />
+          <text x={WIDTH / 2} y={expandedY + expandedHeight + 40} textAnchor="middle" fontSize={26} fill={INK} style={DISPLAY}>
+            {truncate(getArtworkTitle(expandedArtwork.path), 44)}
+          </text>
+          <text x={WIDTH / 2} y={expandedY + expandedHeight + 66} textAnchor="middle" fontSize={13} letterSpacing={1} fill={INK_MUTED} style={MONO}>
+            {`${(selectedDot?.artist ?? "").toUpperCase()} · TAP TO GO BACK`}
+          </text>
+        </g>}
       </svg>
-      {mode === "final" && <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 14 }}>
-        <button onClick={() => setReplayKey((value) => value + 1)}
-          style={{ padding: "9px 16px", border: "1px solid #777", borderRadius: 3, background: "transparent", cursor: "pointer" }}>
-          {"\u21bb Replay"}
-        </button>
-        <span style={{ fontSize: 12, opacity: 0.6 }}>
-          {stage === "complete" ? "Tap a mark to zoom; tap again to return" : "Reconstructing your encounters\u2026"}
-        </span>
-      </div>}
+
+      {mode === "final" && (
+        <div style={{ padding: "4px 16px 20px" }}>
+          {!keyHidden && (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "50%", background: INK }} />artist
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span aria-hidden="true" style={{ width: 18, height: 1, background: "rgba(239,239,232,0.75)" }} />your path
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span aria-hidden="true" style={{ position: "relative", width: 14, height: 14, boxSizing: "border-box", border: "1px solid rgba(239,239,232,0.6)", borderRadius: "50%" }}>
+                  <span style={{ position: "absolute", left: 3, top: 3, width: 6, height: 6, borderRadius: "50%", background: INK }} />
+                </span>you came back
+              </span>
+              <span style={{ flex: 1 }} />
+              <button type="button" aria-label="Hide key" onClick={() => setKeyHidden(true)}
+                style={{ width: 44, height: 44, border: 0, background: "transparent", color: INK_MUTED, cursor: "pointer", fontSize: 16 }}>
+                {"×"}
+              </button>
+            </div>
+          )}
+
+          <div style={{ ...GLASS, borderRadius: 8, padding: 10, marginTop: 6 }}>
+            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES · TAP ONE TO SEE IT IN THE SPACE</p>
+            <div role="group" aria-label="Themes" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {themeStats.map(({ group, artists, encounters: groupEncounters }) => {
+                const on = themeFilter === group;
+                return <button key={group} type="button" aria-pressed={on}
+                  onClick={() => { closeCollection(); setThemeFilter(on ? null : group); }}
+                  style={{
+                    minHeight: 46, padding: "6px 8px", display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "left",
+                    border: 0, borderRadius: 6, cursor: "pointer", color: INK, fontFamily: BODY_FONT,
+                    background: on ? "rgba(180,167,255,0.10)" : "transparent", boxShadow: on ? `inset 0 0 0 1px ${ACCENT}` : "none",
+                  }}>
+                  <span style={{ width: "100%", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ ...DISPLAY, fontSize: 15, color: on || group === topGroup ? ACCENT_TEXT : INK }}>{THEMES[group].short}</span>
+                    <span style={{ ...MONO, flexShrink: 0, fontSize: 11, color: INK_MUTED }}>
+                      {artists} {artists === 1 ? "artist" : "artists"} · {groupEncounters} {groupEncounters === 1 ? "encounter" : "encounters"}
+                    </span>
+                  </span>
+                  <span style={{ width: "100%", fontSize: 11, color: INK_MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {THEMES[group].full}
+                  </span>
+                </button>;
+              })}
+            </div>
+          </div>
+
+          <p style={{ ...MONO, margin: "12px 2px 0", fontSize: 12, color: INK_MUTED }}>
+            {stage === "complete" ? "TAP A DOT TO SEE THE ARTIST’S WORKS" : "RECONSTRUCTING YOUR ENCOUNTERS…"}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
