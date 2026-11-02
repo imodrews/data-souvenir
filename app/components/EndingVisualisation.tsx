@@ -131,11 +131,11 @@ const BLUE = "#3e0ad9";
 const tint = (white: number) => d3.rgb(d3.interpolateRgb(BLUE, "#ffffff")(clamp(white, 0, 1))).formatHex();
 const ACCENT = tint(0.55); // only on what the visitor is focused on
 const ACCENT_TEXT = tint(0.72);
-const DISPLAY_FONT = "var(--font-recursive, 'Recursive'), 'Neue Haas Grotesk Text', sans-serif";
-const MONO_FONT = "var(--font-recursive, 'Recursive'), 'Neue Haas Grotesk Text Mono', monospace";
-const BODY_FONT = "var(--font-atkinson, 'Atkinson Hyperlegible Next'), 'Neue Haas Grotesk Text', sans-serif";
-const DISPLAY: CSSProperties = { fontFamily: DISPLAY_FONT, fontVariationSettings: '"CASL" 1', fontWeight: 700 };
-const MONO: CSSProperties = { fontFamily: MONO_FONT, fontVariationSettings: '"MONO" 1, "CASL" 1' };
+const DISPLAY_FONT = '"Neue Haas Grotesk Display", sans-serif';
+const MONO_FONT = '"Neue Haas Grotesk Text Mono", monospace';
+const BODY_FONT = MONO_FONT;
+const DISPLAY: CSSProperties = { fontFamily: DISPLAY_FONT, fontWeight: 700 };
+const MONO: CSSProperties = { fontFamily: MONO_FONT };
 const GLASS: CSSProperties = { backgroundColor: "rgba(239, 239, 232, 0.05)", boxShadow: "inset 1px 1px 5px rgba(239, 239, 232, 0.4)" };
 
 
@@ -601,7 +601,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [hovered, setHovered] = useState<string | null>(null);
   // The artist picked in the list below the map: their dot lights up.
   const [focusArtist, setFocusArtist] = useState<string | null>(null);
-  const [keyHidden, setKeyHidden] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -840,16 +839,26 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       {mode === "final" && (
         <header style={{ padding: "20px 16px 4px" }}>
           <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
-            YOUR VISIT · {visitDate}
+            {visitDate}
           </p>
-        
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <button type="button" onClick={() => (stage === "complete" ? setReplayKey((value) => value + 1) : skipReplay())}
-              style={{ ...GLASS, height: 44, padding: "0 14px", border: 0, borderRadius: 8, color: INK, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
-              {stage === "complete" ? "\u21bb Replay your path" : "Skip \u00bb"}
-            </button>
-          </div>
         </header>
+      )}
+
+      {mode === "final" && (
+        <div className="ending-legend" style={{ padding: "0 16px", display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
+          <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", background: KEY_DOT }} />artist
+          </span>
+          <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 1, background: KEY_PATH }} />your path
+          </span>
+        </div>
+      )}
+
+      {mode === "final" && (
+        <p style={{ ...MONO, margin: "0 16px 8px", fontSize: 12, color: INK_MUTED }}>
+          {stage === "complete" ? "TAP A DOT TO SEE THE ARTIST’S WORKS" : "RECONSTRUCTING YOUR ENCOUNTERS…"}
+        </p>
       )}
 
       <svg ref={svgRef} viewBox={`0 0 ${WIDTH} ${CANVAS_HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
@@ -1092,26 +1101,16 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       </svg>
 
       {mode === "final" && (
-        <div style={{ padding: "4px 16px 20px" }}>
-          {!keyHidden && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: "50%", background: KEY_DOT }} />artist
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 1, background: KEY_PATH }} />your path
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", background: KEY_DOT }} />bigger: you came back
-              </span>
-              <span style={{ flex: 1 }} />
-              <button type="button" aria-label="Hide key" onClick={() => setKeyHidden(true)}
-                style={{ width: 44, height: 44, border: 0, background: "transparent", color: INK_MUTED, cursor: "pointer", fontSize: 16 }}>
-                {"×"}
-              </button>
-            </div>
-          )}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 16px 0" }}>
+          <button type="button" onClick={() => (stage === "complete" ? setReplayKey((value) => value + 1) : skipReplay())}
+            style={{ ...GLASS, height: 44, padding: "0 14px", border: 0, borderRadius: 8, color: INK, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+            {stage === "complete" ? "\u21bb Replay your path" : "Skip \u00bb"}
+          </button>
+        </div>
+      )}
 
+      {mode === "final" && (
+        <div style={{ padding: "4px 16px 20px" }}>
           {/* Artists, straight on the page: the same dot as on the map, then the name. Tap one to light up its dot. */}
           <p style={{ ...MONO, margin: "14px 2px 4px", fontSize: 11, letterSpacing: "0.03em", color: INK_MUTED }}>ARTISTS · TAP ONE TO FIND THEM IN THE SPACE</p>
           {/* Artists, straight on the page: the number from the map and the name. Tap one to light up its dot. */}
@@ -1137,9 +1136,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             })}
           </ul>
 
-          <p style={{ ...MONO, margin: "12px 2px 0", fontSize: 12, color: INK_MUTED }}>
-            {stage === "complete" ? "TAP A DOT TO SEE THE ARTIST’S WORKS" : "RECONSTRUCTING YOUR ENCOUNTERS…"}
-          </p>
         </div>
       )}
     </div>

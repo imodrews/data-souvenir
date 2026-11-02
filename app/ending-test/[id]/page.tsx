@@ -84,7 +84,7 @@ export default function EndingTestPage() {
   return (
     <main style={{ minHeight: "100vh", padding: "28px 18px", background: "var(--background)", color: "#e1dfd2" }}>
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
-        <h1 style={{ fontWeight: 400 }}>Traces of You</h1>
+        <h1 style={{ fontWeight: 700 }}>Traces of You</h1>
         <p style={{ fontSize: 13, opacity: 0.65 }}>{"\u00b7 "}{artworkCount} artists collected</p>
         {loading && <p>Loading scans{"\u2026"}</p>}
         {error && <p role="alert">Could not load scans: {error}</p>}
@@ -92,7 +92,7 @@ export default function EndingTestPage() {
         {!loading && !error && encounters.length > 0 && <EndingVisualisation key={sessionId} encounters={encounters} mode="final" />}
         {previousVisits.length > 0 && (
           <nav aria-label="Previous visualisations" style={{ marginTop: 32, borderTop: "1px solid #dedede", paddingTop: 20 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 400 }}>Previous visualisations</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>Previous visualisations</h2>
             <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
               {previousVisits.map((visit, index) => {
                 const date = visit.finishedAt ? new Date(visit.finishedAt) : null;
