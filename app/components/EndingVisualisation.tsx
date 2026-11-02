@@ -173,6 +173,10 @@ function getArtworkTitle(path: string) {
   return filename.replace(/^\d+[a-z]_[^_]+_/, "").replace(/\.[^.]+$/, "").replace("Good Lucj", "Good Luck");
 }
 
+function getArtworkThumbnail(path: string) {
+  return path.replace(/\.(?:jpe?g|png)$/i, ".thumb.jpg");
+}
+
 function truncate(text: string, maxCharacters: number) {
   return text.length > maxCharacters ? `${text.slice(0, maxCharacters - 1).trimEnd()}…` : text;
 }
@@ -886,7 +890,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 if (isFront) showArtwork(path); else setFront(index);
               }
             }}>
-            <image href={path} x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2}
+            <image href={getArtworkThumbnail(path)} x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2}
               width={CARD_WIDTH} height={CARD_HEIGHT} preserveAspectRatio="xMidYMid slice"
               style={{ filter: isFront ? "drop-shadow(0 0 14px rgba(255,255,255,0.5))" : "drop-shadow(0 6px 14px rgba(0,0,0,0.35))" }} />
           </g>;
