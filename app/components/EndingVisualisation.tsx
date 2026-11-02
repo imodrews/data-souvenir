@@ -69,6 +69,53 @@ function getModelPosition(floorX: number, floorY: number) {
   return iso(x, 8.6 + ((y - FLOOR_Y_MEZZANINE_EDGE) / (FLOOR_Y_MAX - FLOOR_Y_MEZZANINE_EDGE)) * 14.8, 0);
 }
 
+// The same mapping in plan units (x across, y deep, z height), so dots can be nudged apart inside their level.
+type PlanSpot = { x: number; y: number; z: number; yMin: number; yMax: number };
+function getPlanSpot(floorX: number, floorY: number): PlanSpot {
+  const x = 0.6 + clamp(floorX / FLOOR_X_MAX, 0, 1) * 8.8;
+  const y = clamp(floorY, 0, FLOOR_Y_MAX);
+  if (y <= FLOOR_Y_MEZZANINE_EDGE) return { x, y: 0.6 + (y / FLOOR_Y_MEZZANINE_EDGE) * 6.8, z: SLAB_TOP, yMin: 0.6, yMax: 7.4 };
+  return { x, y: 8.6 + ((y - FLOOR_Y_MEZZANINE_EDGE) / (FLOOR_Y_MAX - FLOOR_Y_MEZZANINE_EDGE)) * 14.8, z: 0, yMin: 8.6, yMax: 23.4 };
+}
+
+// Empty space kept between two dots on screen (on top of their own size), so they never stack.
+const DOT_GAP = 40;
+// Moves a spot by a distance on screen, converted back to plan units and kept inside its level.
+function nudge(spot: PlanSpot, screenDx: number, screenDy: number) {
+  const u = screenDx / PLAN_SCALE;
+  const v = screenDy / PLAN_SCALE;
+  const determinant = 14.4 * 9.92 + 8 * 4.8; // inverse of the isometric mapping in iso()
+  spot.x = clamp(spot.x + (9.92 * u + 8 * v) / determinant, 0.6, 9.4);
+  spot.y = clamp(spot.y + (-4.8 * u + 14.4 * v) / determinant, spot.yMin, spot.yMax);
+}
+// Pushes dots that are too close apart, a little at a time, so each stays as near as possible to its real place.
+function spreadDots(marks: { id: string; floorX: number; floorY: number; visits: number }[]) {
+  const spots = marks.map((mark) => ({ ...mark, spot: getPlanSpot(mark.floorX, mark.floorY), size: outerRadius(mark.visits) }));
+  for (let pass = 0; pass < 200; pass += 1) {
+    let moved = false;
+    for (let first = 0; first < spots.length; first += 1) {
+      for (let second = first + 1; second < spots.length; second += 1) {
+        const a = spots[first];
+        const b = spots[second];
+        const pa = iso(a.spot.x, a.spot.y, a.spot.z);
+        const pb = iso(b.spot.x, b.spot.y, b.spot.z);
+        const distance = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+        const needed = a.size + b.size + DOT_GAP;
+        if (distance >= needed) continue;
+        const angle = (first * 2.4 + second) % (Math.PI * 2); // a fixed direction for dots exactly on top of each other
+        const ux = distance > 0.01 ? (pb.x - pa.x) / distance : Math.cos(angle);
+        const uy = distance > 0.01 ? (pb.y - pa.y) / distance : Math.sin(angle);
+        const push = Math.min(12, (needed - distance) / 2 + 0.5);
+        nudge(a.spot, -ux * push, -uy * push);
+        nudge(b.spot, ux * push, uy * push);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return new Map(spots.map(({ id, spot }) => [id, iso(spot.x, spot.y, spot.z)] as const));
+}
+
 type Coordinate = readonly [number, number];
 const MODEL_ENTRANCE_FLOOR: Coordinate = [694 * 0.46, 231];
 const MODEL_ENTRANCE_POSITION = getModelPosition(...MODEL_ENTRANCE_FLOOR);
@@ -104,7 +151,6 @@ const CARD_WIDTH = 148;
 const CARD_HEIGHT = 184;
 const PHOTO_GAP = 12;
 const PHOTO_SPREAD = CARD_WIDTH + PHOTO_GAP;
-const BAR_HEIGHT = 176;
 
 
 type Group = "red" | "green" | "purple";
@@ -369,7 +415,7 @@ const auraFalloff = (centerX: number, centerY: number) => `<radialGradient id="f
 const AURA_CLOUD_SVG = svgDocument([0, 0, AURA_REACH * 2, AURA_REACH * 2], AURA_DEFS + auraFalloff(AURA_REACH, AURA_REACH),
   `<g mask="url(#fade)"><g filter="url(#aura)" opacity="${HAZE_STRENGTH}">${AURA_BLOBS.map(([dx, dy, r], index) => `<circle cx="${AURA_REACH + dx}" cy="${AURA_REACH + dy}" r="${r}" fill="${AURA_COLORS[index % AURA_COLORS.length]}"/>`).join("")}</g></g>`);
 // Each artist's own loose lines and fuzzy dark dots on top of the cloud.
-function auraDetailsSprite(artist: string, centerX: number, centerY: number) {
+function auraDetailsSprite(artist: string, centerX: number, centerY: number, keepClear?: Box) {
   const random = seededRandom(hashString(artist));
   const around = (reach: number) => [centerX + (random() * 2 - 1) * reach, centerY + (random() * 2 - 1) * reach] as const;
   const lines = Array.from({ length: AURA_LINES }, (_, index) => {
@@ -380,12 +426,34 @@ function auraDetailsSprite(artist: string, centerX: number, centerY: number) {
     return `<path d="M${x1} ${y1}C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}" stroke="${AURA_LINE_COLORS[index % AURA_LINE_COLORS.length]}" stroke-opacity="0.55" stroke-width="${1 + random() * 0.6}"/>`;
   }).join("");
   const fuzzyDots = Array.from({ length: AURA_FUZZY_DOTS }, () => {
-    const [x, y] = around(AURA_REACH * 0.65);
+    // A few tries to land outside the name, photos and text, so no dark dot sits on them.
+    let [x, y] = around(AURA_REACH * 0.65);
+    for (let attempt = 0; keepClear && attempt < 12 && x > keepClear[0] && x < keepClear[2] && y > keepClear[1] && y < keepClear[3]; attempt += 1) {
+      [x, y] = around(AURA_REACH * 0.65);
+    }
     return `<circle cx="${x}" cy="${y}" r="${7 + random() * 5}" fill="${GROUND}" opacity="0.85" filter="url(#fuzz)"/>`;
   }).join("");
   const box: Box = [Math.floor(centerX - AURA_REACH), Math.floor(centerY - AURA_REACH), Math.ceil(centerX + AURA_REACH), Math.ceil(centerY + AURA_REACH)];
   return { box, svg: svgDocument(box, AURA_DEFS + auraFalloff(centerX, centerY), `<g mask="url(#fade)"><g fill="none" stroke-linecap="round">${lines}</g>${fuzzyDots}</g>`) };
 }
+/* ---------- Open collection: name on top, photos in the middle, title and description below ---------- */
+const NAME_SIZE = 30;
+const BIO_LINE = 20;
+function collectionLayout(artist: string, description: string | null) {
+  const count = getArtistArtworkFiles(artist).length;
+  const rowWidth = count * CARD_WIDTH + Math.max(0, count - 1) * PHOTO_GAP;
+  const cardScale = Math.min(1, (WIDTH - 32) / Math.max(1, rowWidth)); // many photos: shrink them to fit
+  const cardHeight = CARD_HEIGHT * cardScale;
+  const bioLines = wrapDescription(description?.trim() || "Artist description unavailable.", 58, 4);
+  const blockHeight = 154 + cardHeight + (bioLines.length - 1) * BIO_LINE;
+  const nameY = Math.max(24, (CANVAS_HEIGHT - blockHeight) / 2) + 24;
+  const metaY = nameY + 22;
+  const photosTop = metaY + 20;
+  const titleY = photosTop + cardHeight + 32;
+  const hintY = titleY + 20;
+  return { cardScale, bioLines, centerX: WIDTH / 2, centerY: photosTop + cardHeight / 2, nameY, metaY, titleY, hintY, bioY: hintY + 30 };
+}
+
 // The cloud fades out towards the top of the drawing instead of being cut off by its edge.
 const AURA_TOP_FADE = 110;
 
@@ -495,7 +563,14 @@ function placeLabels(dots: { id: string; x: number; y: number; visits: number; t
       box[0] >= 4 && box[2] <= WIDTH - 4 && box[1] >= 4 && box[3] <= CANVAS_HEIGHT - 4
       && !placedBoxes.some((other) => overlaps(box, other))
       && ![...dotBoxes].some(([id, other]) => id !== dot.id && overlaps(box, other)));
-    const chosen = free ?? candidates[0];
+    const shared = (a: Box, b: Box) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    const overlapArea = (box: Box) => {
+      const offCanvas = (box[2] - box[0]) * (box[3] - box[1]) - shared(box, [4, 4, WIDTH - 4, CANVAS_HEIGHT - 4]);
+      return offCanvas * 100 + [...placedBoxes, ...[...dotBoxes].filter(([id]) => id !== dot.id).map(([, other]) => other)]
+        .reduce((sum, other) => sum + shared(box, other), 0);
+    };
+    // No free spot: take the one that covers the least of the other names and dots, and never runs off the edge.
+    const chosen = free ?? candidates.reduce((best, candidate) => (overlapArea(candidate.box) < overlapArea(best.box) ? candidate : best));
     placedBoxes.push(chosen.box);
     result.set(dot.id, chosen.placement);
   }
@@ -555,29 +630,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
   const interactive = mode === "final" && stage === "complete";
 
-  // Spread marks that sit too close together on the floor (unchanged logic).
-  const modelPositions = useMemo(() => {
-    const modelItems = items.map((item) => ({ ...item, modelFloorX: item.floorX, modelFloorY: item.floorY }));
-    const minHorizontalDistance = 140;
-    for (let pass = 0; pass < 60; pass += 1) {
-      let moved = false;
-      for (let firstIndex = 0; firstIndex < modelItems.length; firstIndex += 1) {
-        for (let secondIndex = firstIndex + 1; secondIndex < modelItems.length; secondIndex += 1) {
-          const first = modelItems[firstIndex];
-          const second = modelItems[secondIndex];
-          const dx = second.modelFloorX - first.modelFloorX;
-          if (Math.abs(dx) >= minHorizontalDistance) continue;
-          const direction = dx === 0 ? (firstIndex % 2 === 0 ? 1 : -1) : Math.sign(dx);
-          const push = (minHorizontalDistance - Math.abs(dx)) / 2;
-          first.modelFloorX = Math.max(12, Math.min(682, first.modelFloorX - direction * push));
-          second.modelFloorX = Math.max(12, Math.min(682, second.modelFloorX + direction * push));
-          moved = true;
-        }
-      }
-      if (!moved) break;
-    }
-    return new Map(modelItems.map((item) => [item.scanId, getModelPosition(item.modelFloorX, item.modelFloorY)] as const));
-  }, [items]);
+  // Every dot near its artwork's place in the building, with some space between dots so they never stack.
+  const modelPositions = useMemo(
+    () => spreadDots(items.map((item) => ({ id: item.scanId, floorX: item.floorX, floorY: item.floorY, visits: item.encounterIndexes.length }))),
+    [items],
+  );
 
   // Every mark stays where its artwork is in the building.
   const dots = useMemo(() => items.map((item, index) => {
@@ -656,17 +713,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     return [dot.scanId, hazeSprite(blobs)] as const;
   })), [dots, blues]);
 
-  // Where each artist's photos open, and the cloud behind them.
+  // Where each artist's photos open (always in the middle), and the cloud behind them.
   const fanFor = useMemo(() => new Map(dots.map((dot) => {
-    const count = getArtistArtworkFiles(dot.artist).length;
-    const fanWidth = count * CARD_WIDTH + Math.max(0, count - 1) * PHOTO_GAP;
-    const centerX = clamp(dot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12);
-    const centerY = clamp(
-      dot.y < CANVAS_HEIGHT * 0.45 ? dot.y + 150 : dot.y - 150,
-      CARD_HEIGHT / 2 + 24,
-      CANVAS_HEIGHT - BAR_HEIGHT - 20 - CARD_HEIGHT / 2 - 16,
-    );
-    return [dot.scanId, { centerX, centerY, aura: auraDetailsSprite(dot.artist, centerX, centerY) }] as const;
+    const layout = collectionLayout(dot.artist, dot.artistDescription);
+    const textBlock: Box = [layout.centerX - 300, layout.nameY - 40, layout.centerX + 300, layout.bioY + (layout.bioLines.length - 1) * BIO_LINE + 20];
+    return [dot.scanId, { ...layout, aura: auraDetailsSprite(dot.artist, layout.centerX, layout.centerY, textBlock) }] as const;
   })), [dots]);
 
   const layers = useMemo(() => {
@@ -759,14 +810,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   /* ---------- Collection fan ---------- */
   const selectedDot = selected ? dots.find((dot) => dot.scanId === selected) ?? null : null;
   const collection = selectedDot ? getArtistArtworkFiles(selectedDot.artist) : [];
-  const artistBioLines = selectedDot
-    ? wrapDescription(selectedDot.artistDescription?.trim() || "Artist description unavailable.", 48, 4)
-    : [];
   const selectedFan = selectedDot ? fanFor.get(selectedDot.scanId)! : null;
   const fanCenterX = selectedFan?.centerX ?? 0;
   const fanCenterY = selectedFan?.centerY ?? 0;
   const frontPath = collection[Math.min(front, collection.length - 1)] ?? null;
-  const barY = CANVAS_HEIGHT - BAR_HEIGHT - 10;
   const mainColor = new Map(dots.map((dot) => [dot.scanId, blues.get(dot.scanId)!.path] as const));
 
   const expandedScale = expandedArtwork
@@ -928,7 +975,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const tones = blues.get(dot.scanId)!;
           const radius = dotRadius(Math.max(1, completedVisits));
           let opacity = completedVisits > 0 ? 1 : 0;
-          if (selected && !active) opacity *= 0.45;
+          if (selected && !active) opacity *= 1 - 0.8 * openProgress;
+          else if (active) opacity *= 1 - openProgress;
           else if (!selected && themeFilter && themeFilter !== dot.group) opacity *= 0.25;
           return <g key={dot.scanId} className={`${uid}-focus`} opacity={opacity}
             role={interactive ? "button" : undefined}
@@ -975,10 +1023,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         {selectedDot && collection.map((path, index) => {
           const middle = index - (collection.length - 1) / 2;
           const isFront = index === front;
-          const targetX = fanCenterX + middle * PHOTO_SPREAD;
+          const cardScale = selectedFan?.cardScale ?? 1;
+          const targetX = fanCenterX + middle * PHOTO_SPREAD * cardScale;
           const x = d3.interpolateNumber(selectedDot.x, targetX)(openProgress);
           const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress);
-          const scale = 0.2 + 0.8 * openProgress;
+          const scale = (0.2 + 0.8 * openProgress) * cardScale;
           const title = getArtworkTitle(path);
           return <g key={path} role="button" tabIndex={0} className={`${uid}-focus`}
             aria-label={isFront ? `Enlarge ${title}` : `Select ${title}`}
@@ -999,35 +1048,23 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           </g>;
         })}
 
-        {/* Info bar for the card in front */}
-        {selectedDot && <g opacity={openProgress} onClick={(event) => event.stopPropagation()}>
-          <rect x={10} y={barY} width={WIDTH - 20} height={BAR_HEIGHT} rx={8} fill="#141414" fillOpacity={0.9}
-            stroke={ACCENT} strokeOpacity={0.6} strokeWidth={1.5} />
-          <text x={30} y={barY + 28} fontSize={21} fill={ACCENT_TEXT} style={DISPLAY}>
-            {selectedDot.artist}
+        {/* The artist's name on top of the photos; the front photo's title and the artist's description below */}
+        {selectedDot && selectedFan && <g opacity={openProgress} pointerEvents="none" textAnchor="middle">
+          <text x={WIDTH / 2} y={selectedFan.nameY} fontSize={NAME_SIZE} fill={INK} style={DISPLAY}>
+            {truncate(selectedDot.artist, 32)}
           </text>
-          <text x={30} y={barY + 48} fontSize={12} fill={INK_MUTED} style={MONO}>
+          <text x={WIDTH / 2} y={selectedFan.metaY} fontSize={12} letterSpacing={1} fill={INK} fillOpacity={0.72} style={MONO}>
             {`${selectedDot.order} · ${THEMES[selectedDot.group].short.toUpperCase()}${selectedDot.visits > 1 ? ` · ${selectedDot.visits} VISITS` : ""}`}
           </text>
-          <text x={30} y={barY + 72} fontSize={16} fill={INK} style={{ fontFamily: BODY_FONT }}>
-            {artistBioLines.map((line, index) => <tspan key={index} x={30} dy={index === 0 ? 0 : 17}>{line}</tspan>)}
+          <text x={WIDTH / 2} y={selectedFan.titleY} fontSize={19} fill={INK} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
+            {frontPath ? truncate(getArtworkTitle(frontPath), 44) : "No images for this artist yet"}
           </text>
-          <text x={30} y={barY + 146} fontSize={20} fill={INK} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
-            {frontPath ? truncate(getArtworkTitle(frontPath), 36) : "No images for this artist yet"}
+          <text x={WIDTH / 2} y={selectedFan.hintY} fontSize={12} letterSpacing={1} fill={INK} fillOpacity={0.72} style={MONO}>
+            {collection.length ? `IMAGE ${front + 1} OF ${collection.length} · TAP THE PHOTO TO LOOK CLOSER` : ""}
           </text>
-          <text x={30} y={barY + 165} fontSize={12} fill={INK_MUTED} style={MONO}>
-            {collection.length ? `IMAGE ${front + 1} OF ${collection.length} · TAP A CARD TO BRING IT FORWARD` : ""}
+          <text x={WIDTH / 2} y={selectedFan.bioY} fontSize={15} fill={INK} fillOpacity={0.85} style={{ fontFamily: BODY_FONT }}>
+            {selectedFan.bioLines.map((line, index) => <tspan key={index} x={WIDTH / 2} dy={index === 0 ? 0 : BIO_LINE}>{line}</tspan>)}
           </text>
-          {frontPath && <g role="button" tabIndex={0} className={`${uid}-focus`} aria-label={`Enlarge ${getArtworkTitle(frontPath)}`} style={{ cursor: "zoom-in" }}
-            onClick={(event) => { event.stopPropagation(); showArtwork(frontPath); }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); showArtwork(frontPath); }
-            }}>
-            <rect x={WIDTH - 20 - 166} y={barY + 58} width={156} height={56} rx={8} fill={INK} />
-            <text x={WIDTH - 20 - 88} y={barY + 92} textAnchor="middle" fontSize={18} fill={GROUND} style={{ fontFamily: BODY_FONT, fontWeight: 700 }}>
-              Look closer
-            </text>
-          </g>}
         </g>}
 
         {/* Enlarged artwork */}
