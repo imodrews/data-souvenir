@@ -53,6 +53,7 @@ export default function EndingTestPage() {
           };
           const scan = raw as unknown as {
             id: string | number;
+            scanned_at: string | null;
             artwork: ScannedArtwork | ScannedArtwork[] | null;
           };
           const artwork = Array.isArray(scan.artwork) ? scan.artwork[0] : scan.artwork;
@@ -65,6 +66,7 @@ export default function EndingTestPage() {
             artist: artist?.name ?? "Unknown artist",
             artistDescription: artist?.bio_eng ?? null,
             group: artist?.curatorial_group,
+            scannedAt: scan.scanned_at,
             x: artwork.x,
             y: artwork.y,
           } satisfies JourneyEncounter];
@@ -82,7 +84,7 @@ export default function EndingTestPage() {
   return (
     <main style={{ minHeight: "100vh", padding: "28px 18px", background: "var(--background)", color: "#e1dfd2" }}>
       <div style={{ maxWidth: 520, margin: "0 auto" }}>
-        <h1 style={{ fontWeight: 400 }}>Your exhibition constellation</h1>
+        <h1 style={{ fontWeight: 400 }}>Traces of You</h1>
         <p style={{ fontSize: 13, opacity: 0.65 }}>{"\u00b7 "}{artworkCount} artists collected</p>
         {loading && <p>Loading scans{"\u2026"}</p>}
         {error && <p role="alert">Could not load scans: {error}</p>}

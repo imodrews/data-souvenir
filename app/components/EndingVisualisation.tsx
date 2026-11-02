@@ -140,10 +140,10 @@ const GLASS: CSSProperties = { backgroundColor: "rgba(239, 239, 232, 0.05)", box
 
 
 /* ---------- Marks ---------- */
-const DOT_RADIUS = 24; // outer ring of the touchpoint dot
-const DOT_GROWTH = 5; // a return visit makes the dot a little bigger (up to three times)
+const DOT_RADIUS = 19; // outer ring of the touchpoint dot
+const DOT_GROWTH = 4; // a return visit makes the dot a little bigger (up to three times)
 const LABEL_SIZE = 18;
-const POOL_RADIUS = 62; // hazy glow on the floor under each artist
+const POOL_RADIUS = 52; // hazy glow on the floor under each artist
 // How solid the glow is (0-1). Higher is brighter and bluer: a thin, see-through glow mixes with the dark ground and reads purple.
 const HAZE_STRENGTH = 1;
 const HAZE_BLUR = 18; // softness of the glow's edge; lower keeps more of it bright blue
@@ -175,11 +175,11 @@ export type JourneyEncounter = {
   artist: string;
   artistDescription: string | null;
   group: string | null | undefined;
+  scannedAt?: string | null;
   x: number | null;
   y: number | null;
 };
 
-const GROUP_ORDER: readonly Group[] = ["red", "green", "purple"];
 const THEMES: Record<Group, { short: string; full: string }> = {
   red: { short: "Nicht-Präsenz", full: "Sichtbarkeit des Ungesehenen, »Nicht-Präsenz«" },
   green: { short: "Erinnerung", full: "Erinnerungskultur, Trauma und verdrängte Geschichte(n)" },
@@ -214,6 +214,13 @@ function getArtistArtworkFiles(artist: string) {
 function getArtworkTitle(path: string) {
   const filename = decodeURIComponent(path.split("/").at(-1) ?? "");
   return filename.replace(/^\d+[a-z]_[^_]+_/, "").replace(/\.[^.]+$/, "").replace("Good Lucj", "Good Luck");
+}
+
+function formatVisitDate(scannedAt: string | null | undefined) {
+  if (!scannedAt) return "VISIT DATE UNAVAILABLE";
+  const date = new Date(scannedAt);
+  if (Number.isNaN(date.getTime())) return "VISIT DATE UNAVAILABLE";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(date);
 }
 
 function truncate(text: string, maxCharacters: number) {
@@ -592,7 +599,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [openProgress, setOpenProgress] = useState(0);
   const [expandedArtwork, setExpandedArtwork] = useState<{ path: string; width: number; height: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [themeFilter, setThemeFilter] = useState<Group | null>(null);
+  // The artist picked in the list below the map: their dot lights up.
+  const [focusArtist, setFocusArtist] = useState<string | null>(null);
   const [keyHidden, setKeyHidden] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
@@ -627,6 +635,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   }, [encounters]);
 
   const encounterCount = items.reduce((count, item) => count + item.encounterIndexes.length, 0);
+  const visitDate = formatVisitDate(encounters.find((encounter) => encounter.scannedAt)?.scannedAt);
   const visibleJourneyProgress = mode === "live" ? encounterCount : journeyProgress;
   const interactive = mode === "final" && stage === "complete";
 
@@ -647,17 +656,18 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     [dots],
   );
 
-  const themeStats = useMemo(() => GROUP_ORDER.map((group) => {
-    const inGroup = dots.filter((dot) => dot.group === group);
-    return {
-      group,
-      artists: new Set(inGroup.map((dot) => dot.artist)).size,
-      encounters: inGroup.reduce((count, dot) => count + dot.visits, 0),
-    };
-  }).filter((stat) => stat.artists > 0), [dots]);
-  const topGroup = themeStats.reduce<(typeof themeStats)[number] | null>(
-    (best, stat) => (!best || stat.encounters > best.encounters ? stat : best), null)?.group ?? null;
-  const artistCount = new Set(items.map((item) => item.artist)).size;
+
+  // One row per artist for the list under the map, in the order they were first visited.
+  const artistRows = useMemo(() => {
+    const rows = new Map<string, { artist: string; orders: string[]; scanIds: string[]; rings: readonly string[] }>();
+    for (const dot of dots) {
+      const row = rows.get(dot.artist) ?? { artist: dot.artist, orders: [], scanIds: [], rings: bluesFor(hashString(dot.artist)).rings };
+      row.orders.push(dot.order);
+      row.scanIds.push(dot.scanId);
+      rows.set(dot.artist, row);
+    }
+    return [...rows.values()];
+  }, [dots]);
 
   const pathSegments = useMemo(() => {
     const encounterSequence = dots
@@ -831,13 +841,9 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       {mode === "final" && (
         <header style={{ padding: "20px 16px 4px" }}>
           <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
-            YOUR VISIT · {artistCount} {artistCount === 1 ? "ARTIST" : "ARTISTS"} · {encounterCount} {encounterCount === 1 ? "ENCOUNTER" : "ENCOUNTERS"}
+             {visitDate}
           </p>
-          {topGroup && (
-            <h2 style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
-              Most of your encounters were with <span style={{ color: ACCENT_TEXT }}>{THEMES[topGroup].short}</span>.
-            </h2>
-          )}
+        
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
             <button type="button" onClick={() => (stage === "complete" ? setReplayKey((value) => value + 1) : skipReplay())}
               style={{ ...GLASS, height: 44, padding: "0 14px", border: 0, borderRadius: 8, color: INK, fontFamily: BODY_FONT, fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
@@ -849,7 +855,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
       <svg ref={svgRef} viewBox={`0 0 ${WIDTH} ${CANVAS_HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", width: "100%", height: "auto", aspectRatio: `${WIDTH} / ${CANVAS_HEIGHT}`, background: "transparent", overflow: "hidden" }}
-        onClick={() => { if (expandedArtwork) setExpandedArtwork(null); else closeCollection(); }}
+        onClick={() => {
+          if (expandedArtwork) setExpandedArtwork(null);
+          else if (selected) closeCollection();
+          else setFocusArtist(null); // tapping the empty map turns the lit dot off again
+        }}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return;
           if (expandedArtwork) setExpandedArtwork(null); else closeCollection();
@@ -889,14 +899,14 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             if (!url) return null;
             const [x0, y0, x1, y1] = hazeSprites.get(dot.scanId)!.box;
             const reached = dot.encounterIndexes.some((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1);
-            const faded = themeFilter !== null && themeFilter !== dot.group;
+            const faded = focusArtist !== null && focusArtist !== dot.artist;
             return <image key={dot.scanId} href={url} x={x0} y={y0} width={x1 - x0} height={y1 - y0} preserveAspectRatio="none"
               opacity={(reached ? (faded ? 0.25 : 1) : 0) * HAZE_STRENGTH} />;
           })}
         </g>
 
         {/* Path: each stretch blends from one artist's colour to the next */}
-        <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.9}>
+        <g pointerEvents="none" opacity={focusArtist || selected ? 0.3 : 0.9}>
           <defs>
             {pathSegments.map((segment) => (
               <linearGradient key={segment.index} id={`${uid}-segment-${segment.index}`} gradientUnits="userSpaceOnUse"
@@ -930,8 +940,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         <g pointerEvents="none">
           {dots.map((dot) => {
             const reached = dot.encounterIndexes.some((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1);
-            const lit = selected === dot.scanId || hovered === dot.scanId || themeFilter === dot.group;
-            const faded = themeFilter !== null && themeFilter !== dot.group;
+            const lit = selected === dot.scanId || hovered === dot.scanId || focusArtist === dot.artist;
+            const faded = focusArtist !== null && focusArtist !== dot.artist;
             const label = labels.get(dot.scanId)!;
             return <text key={dot.scanId} x={label.x} y={label.y} textAnchor={label.anchor} fontSize={LABEL_SIZE}
               fill={lit ? ACCENT_TEXT : INK} stroke={GROUND} strokeWidth={5} strokeLinejoin="round" paintOrder="stroke"
@@ -971,13 +981,13 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         {dots.map((dot, dotIndex) => {
           const completedVisits = dot.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
           const active = selected === dot.scanId;
-          const lit = active || hovered === dot.scanId || (!selected && themeFilter === dot.group);
+          const lit = active || hovered === dot.scanId || (!selected && focusArtist === dot.artist);
           const tones = blues.get(dot.scanId)!;
           const radius = dotRadius(Math.max(1, completedVisits));
           let opacity = completedVisits > 0 ? 1 : 0;
           if (selected && !active) opacity *= 1 - 0.8 * openProgress;
           else if (active) opacity *= 1 - openProgress;
-          else if (!selected && themeFilter && themeFilter !== dot.group) opacity *= 0.25;
+          else if (!selected && focusArtist && focusArtist !== dot.artist) opacity *= 0.3;
           return <g key={dot.scanId} className={`${uid}-focus`} opacity={opacity}
             role={interactive ? "button" : undefined}
             tabIndex={interactive ? 0 : -1}
@@ -1103,31 +1113,35 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             </div>
           )}
 
-          <div style={{ ...GLASS, borderRadius: 8, padding: 10, marginTop: 6 }}>
-            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES · TAP ONE TO SEE IT IN THE SPACE</p>
-            <div role="group" aria-label="Themes" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {themeStats.map(({ group, artists, encounters: groupEncounters }) => {
-                const on = themeFilter === group;
-                return <button key={group} type="button" aria-pressed={on}
-                  onClick={() => { closeCollection(); setThemeFilter(on ? null : group); }}
+          {/* Artists, straight on the page: the same dot as on the map, then the name. Tap one to light up its dot. */}
+          <p style={{ ...MONO, margin: "14px 2px 4px", fontSize: 11, letterSpacing: "0.03em", color: INK_MUTED }}>ARTISTS · TAP ONE TO FIND THEM IN THE SPACE</p>
+          <ul role="list" aria-label="Artists you met" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {artistRows.map(({ artist, orders, rings }) => {
+              const on = focusArtist === artist;
+              return <li key={artist} style={{ borderTop: "1px solid rgba(239,239,232,0.10)" }}>
+                <button type="button" aria-pressed={on}
+                  onClick={() => {
+                    closeCollection();
+                    setFocusArtist(on ? null : artist);
+                    // On a phone the map may be scrolled away: bring it back so the lit dot can be seen.
+                    if (!on) svgRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  }}
                   style={{
-                    minHeight: 46, padding: "6px 8px", display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "left",
-                    border: 0, borderRadius: 6, cursor: "pointer", color: INK, fontFamily: BODY_FONT,
-                    background: on ? `${ACCENT}1A` : "transparent", boxShadow: on ? `inset 0 0 0 1px ${ACCENT}` : "none",
+                    width: "100%", minHeight: 48, padding: "8px 2px", display: "flex", alignItems: "center", gap: 14,
+                    border: 0, background: "transparent", cursor: "pointer", textAlign: "left", color: INK, fontFamily: BODY_FONT,
                   }}>
-                  <span style={{ width: "100%", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ ...DISPLAY, fontSize: 15, color: on || group === topGroup ? ACCENT_TEXT : INK }}>{THEMES[group].short}</span>
-                    <span style={{ ...MONO, flexShrink: 0, fontSize: 11, color: INK_MUTED }}>
-                      {artists} {artists === 1 ? "artist" : "artists"} · {groupEncounters} {groupEncounters === 1 ? "encounter" : "encounters"}
-                    </span>
-                  </span>
-                  <span style={{ width: "100%", fontSize: 11, color: INK_MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {THEMES[group].full}
-                  </span>
-                </button>;
-              })}
-            </div>
-          </div>
+                  <span aria-hidden="true" style={{
+                    flexShrink: 0, width: 20, height: 20, borderRadius: "50%",
+                    background: `radial-gradient(circle, ${rings[3]} 0 33%, ${rings[2]}F2 33% 54%, ${rings[1]}B3 54% 76%, ${rings[0]}4D 76%)`,
+                    boxShadow: on ? `0 0 0 2px ${GROUND}, 0 0 0 3.5px #FFFFFF, 0 0 12px 4px ${rings[1]}` : `0 0 8px 1px ${rings[1]}66`,
+                    transition: "box-shadow 0.25s ease",
+                  }} />
+                  <span style={{ ...MONO, flexShrink: 0, minWidth: 22, fontSize: 12, color: INK_MUTED }}>{orders.join(" · ")}</span>
+                  <span style={{ ...DISPLAY, fontSize: 16, color: on ? ACCENT_TEXT : INK, transition: "color 0.25s ease" }}>{artist}</span>
+                </button>
+              </li>;
+            })}
+          </ul>
 
           <p style={{ ...MONO, margin: "12px 2px 0", fontSize: 12, color: INK_MUTED }}>
             {stage === "complete" ? "TAP A DOT TO SEE THE ARTIST’S WORKS" : "RECONSTRUCTING YOUR ENCOUNTERS…"}
