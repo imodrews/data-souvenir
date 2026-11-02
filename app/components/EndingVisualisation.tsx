@@ -306,7 +306,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [front, setFront] = useState(0);
-  const [openProgress, setOpenProgress] = useState(0);
   const [expandedArtwork, setExpandedArtwork] = useState<{ path: string; width: number; height: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [themeFilter, setThemeFilter] = useState<Group | null>(null);
@@ -431,10 +430,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setSelected(null);
       setExpandedArtwork(null);
       setHovered(null);
-      setOpenProgress(0);
       openValue.current.value = 0;
       openTween.current?.kill();
       const pathElements = svgRef.current?.querySelectorAll<SVGPathElement>("[data-journey-segment]") ?? [];
+      for (const path of pathElements) path.setAttribute("stroke-dashoffset", "1");
       const values = { journey: 0 };
       let renderedJourneyProgress = 0;
       timeline = gsap.timeline({
@@ -480,6 +479,38 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     image.src = path;
   }
 
+  function updateOpenProgress(progress: number) {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const value = clamp(progress, 0, 1);
+
+    const dim = svg.querySelector<SVGRectElement>("[data-open-dim]");
+    dim?.setAttribute("opacity", String(0.82 * value));
+
+    const aura = svg.querySelector<SVGGElement>("[data-open-aura]");
+    if (aura) {
+      const centerX = Number(aura.dataset.centerX);
+      const centerY = Number(aura.dataset.centerY);
+      const bloom = 0.6 + 0.4 * value;
+      aura.setAttribute("opacity", String(value));
+      aura.setAttribute("transform", `translate(${centerX} ${centerY}) scale(${bloom}) translate(${-centerX} ${-centerY})`);
+    }
+
+    for (const card of svg.querySelectorAll<SVGGElement>("[data-open-card]")) {
+      const startX = Number(card.dataset.startX);
+      const startY = Number(card.dataset.startY);
+      const targetX = Number(card.dataset.targetX);
+      const targetY = Number(card.dataset.targetY);
+      const x = d3.interpolateNumber(startX, targetX)(value);
+      const y = d3.interpolateNumber(startY, targetY)(value);
+      card.setAttribute("opacity", String(Math.min(1, value * 1.5)));
+      card.setAttribute("transform", `translate(${x} ${y}) scale(${0.2 + 0.8 * value})`);
+    }
+
+    const info = svg.querySelector<SVGGElement>("[data-open-info]");
+    info?.setAttribute("opacity", String(value));
+  }
+
   function openCollection(scanId: string) {
     if (!interactive) return;
     openTween.current?.kill();
@@ -489,7 +520,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     openValue.current.value = 0;
     openTween.current = gsap.to(openValue.current, {
       value: 1, duration: 0.6, ease: "power3.out",
-      onUpdate: () => setOpenProgress(openValue.current.value),
+      onUpdate: () => updateOpenProgress(openValue.current.value),
     });
   }
 
@@ -499,7 +530,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     setExpandedArtwork(null);
     openTween.current = gsap.to(openValue.current, {
       value: 0, duration: 0.4, ease: "power2.in",
-      onUpdate: () => setOpenProgress(openValue.current.value),
+      onUpdate: () => updateOpenProgress(openValue.current.value),
       onComplete: () => setSelected(null),
     });
   }
@@ -724,7 +755,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </g>
 
         {/* Dims the space while a collection is open; tap it to close */}
-        {selected && <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0.82 * openProgress}
+        {selected && <rect data-open-dim="" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0}
           onClick={(event) => { event.stopPropagation(); closeCollection(); }} />}
 
         {/* Blue cloud blooming out of the selected dot, behind the photos */}
@@ -742,9 +773,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             const [x, y] = around(AURA_REACH * 0.65);
             return { x, y, r: 7 + random() * 5 };
           });
-          const bloom = 0.6 + 0.4 * openProgress;
-          return <g pointerEvents="none" opacity={openProgress}
-            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(${bloom}) translate(${-selectedDot.x} ${-selectedDot.y})`}>
+          return <g data-open-aura="" data-center-x={selectedDot.x} data-center-y={selectedDot.y} pointerEvents="none" opacity={0}
+            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(0.6) translate(${-selectedDot.x} ${-selectedDot.y})`}>
             <defs>
               <radialGradient id={`${uid}-aura-falloff`} gradientUnits="userSpaceOnUse" cx={fanCenterX} cy={fanCenterY} r={AURA_REACH}>
                 <stop offset="0.35" stopColor="#fff" />
@@ -830,14 +860,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const middle = index - (collection.length - 1) / 2;
           const isFront = index === front;
           const targetX = fanCenterX + middle * PHOTO_SPREAD;
-          const x = d3.interpolateNumber(selectedDot.x, targetX)(openProgress);
-          const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress);
-          const scale = 0.2 + 0.8 * openProgress;
           const title = getArtworkTitle(path);
-          return <g key={path} role="button" tabIndex={0} className={`${uid}-focus`}
+          return <g key={path} data-open-card="" data-start-x={selectedDot.x} data-start-y={selectedDot.y} data-target-x={targetX} data-target-y={fanCenterY}
+            role="button" tabIndex={0} className={`${uid}-focus`}
             aria-label={isFront ? `Enlarge ${title}` : `Select ${title}`}
-            opacity={Math.min(1, openProgress * 1.5)}
-            transform={`translate(${x} ${y}) scale(${scale})`}
+            opacity={0}
+            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(0.2)`}
             style={{ cursor: isFront ? "zoom-in" : "pointer" }}
             onClick={(event) => { event.stopPropagation(); if (isFront) showArtwork(path); else setFront(index); }}
             onKeyDown={(event) => {
@@ -854,7 +882,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         })}
 
         {/* Info bar for the card in front */}
-        {selectedDot && <g opacity={openProgress} onClick={(event) => event.stopPropagation()}>
+        {selectedDot && <g data-open-info="" opacity={0} onClick={(event) => event.stopPropagation()}>
           <rect x={10} y={barY} width={WIDTH - 20} height={BAR_HEIGHT} rx={8} fill="#141414" fillOpacity={0.9}
             stroke={ACCENT} strokeOpacity={0.6} strokeWidth={1.5} />
           <text x={30} y={barY + 28} fontSize={21} fill={ACCENT_TEXT} style={DISPLAY}>
