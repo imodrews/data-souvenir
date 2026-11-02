@@ -100,6 +100,9 @@ const POOL_RADIUS = 62; // hazy glow on the floor under each artist
 // How solid the glow is (0-1). Higher is brighter and bluer: a thin, see-through glow mixes with the dark ground and reads purple.
 const HAZE_STRENGTH = 1;
 const HAZE_BLUR = 18; // softness of the glow's edge; lower keeps more of it bright blue
+const HAZE_FILTER_MARGIN = Math.ceil(HAZE_BLUR * 3.5);
+const AURA_BLUR = 44;
+const AURA_FILTER_MARGIN = Math.ceil(AURA_BLUR * 3.5);
 const CARD_WIDTH = 148;
 const CARD_HEIGHT = 184;
 const PHOTO_GAP = 12;
@@ -637,8 +640,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feGaussianBlur stdDeviation={4} />
           </filter>
           {/* Colour cloud: heavy blur, then the edges break up into grain like a spray-painted print */}
-          <filter id={`${uid}-aura`} x="-60%" y="-60%" width="220%" height="220%" colorInterpolationFilters="sRGB">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={44} result="blurred" />
+          <filter id={`${uid}-aura`} filterUnits="userSpaceOnUse"
+            x={-AURA_FILTER_MARGIN} y={-AURA_FILTER_MARGIN}
+            width={WIDTH + AURA_FILTER_MARGIN * 2} height={CANVAS_HEIGHT + AURA_FILTER_MARGIN * 2}
+            colorInterpolationFilters="sRGB">
+            <feGaussianBlur in="SourceGraphic" stdDeviation={AURA_BLUR} result="blurred" />
             <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves={2} seed={7} result="noise" />
             <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="noiseAlpha" />
             <feComposite in="blurred" in2="noiseAlpha" operator="arithmetic" k1={0} k2={1} k3={0.55} k4={-0.27} result="mixed" />
@@ -650,7 +656,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             <feMerge><feMergeNode in="speckled" /><feMergeNode in="specksInside" /></feMerge>
           </filter>
           {/* Haze: a wide soft glow with fine film grain, no hard patches */}
-          <filter id={`${uid}-haze`} x="-80%" y="-80%" width="260%" height="260%" colorInterpolationFilters="sRGB">
+          <filter id={`${uid}-haze`} filterUnits="userSpaceOnUse"
+            x={-HAZE_FILTER_MARGIN} y={-HAZE_FILTER_MARGIN}
+            width={WIDTH + HAZE_FILTER_MARGIN * 2} height={CANVAS_HEIGHT + HAZE_FILTER_MARGIN * 2}
+            colorInterpolationFilters="sRGB">
             <feGaussianBlur in="SourceGraphic" stdDeviation={HAZE_BLUR} result="blurred" />
             <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} seed={7} result="noise" />
             <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0 0 0 0.55" result="grainMask" />
@@ -664,7 +673,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           <filter id={`${uid}-ring-soft`} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation={0.7} />
           </filter>
-          <filter id={`${uid}-dot-glow`} x="-100%" y="-100%" width="300%" height="300%">
+          <filter id={`${uid}-dot-glow`} x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur stdDeviation={8} />
           </filter>
           {/* A slight hand-drawn wobble for the outline */}
@@ -712,9 +721,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </g>
 
         {/* Hazy blue glow behind each dot */}
-        <g pointerEvents="none" filter={`url(#${uid}-haze)`} opacity={HAZE_STRENGTH}>
-          {pools.map((pool) => <circle key={pool.key} cx={pool.x} cy={pool.y} r={pool.r} fill={pool.color} opacity={pool.opacity} />)}
-        </g>
+        {visibleJourneyProgress > 0 && (
+          <g pointerEvents="none" filter={`url(#${uid}-haze)`} opacity={HAZE_STRENGTH}>
+            {pools.map((pool) => <circle key={pool.key} cx={pool.x} cy={pool.y} r={pool.r} fill={pool.color} opacity={pool.opacity} />)}
+          </g>
+        )}
 
         {/* Path: each stretch blends from one artist's colour to the next */}
         <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.9}>
@@ -780,8 +791,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 <stop offset="0.35" stopColor="#fff" />
                 <stop offset="1" stopColor="#fff" stopOpacity={0} />
               </radialGradient>
-              <mask id={`${uid}-aura-fade`} maskUnits="userSpaceOnUse" x={-WIDTH} y={-CANVAS_HEIGHT} width={WIDTH * 3} height={CANVAS_HEIGHT * 3}>
-                <rect x={-WIDTH} y={-CANVAS_HEIGHT} width={WIDTH * 3} height={CANVAS_HEIGHT * 3} fill={`url(#${uid}-aura-falloff)`} />
+              <mask id={`${uid}-aura-fade`} maskUnits="userSpaceOnUse" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT}>
+                <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={`url(#${uid}-aura-falloff)`} />
               </mask>
               <linearGradient id={`${uid}-aura-edges`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={CANVAS_HEIGHT}>
                 <stop offset="0" stopColor="#fff" stopOpacity={0} />
@@ -789,8 +800,8 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 <stop offset={1 - 60 / CANVAS_HEIGHT} stopColor="#fff" />
                 <stop offset="1" stopColor="#fff" stopOpacity={0} />
               </linearGradient>
-              <mask id={`${uid}-aura-edge-fade`} maskUnits="userSpaceOnUse" x={-WIDTH} y={0} width={WIDTH * 3} height={CANVAS_HEIGHT}>
-                <rect x={-WIDTH} y={0} width={WIDTH * 3} height={CANVAS_HEIGHT} fill={`url(#${uid}-aura-edges)`} />
+              <mask id={`${uid}-aura-edge-fade`} maskUnits="userSpaceOnUse" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT}>
+                <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={`url(#${uid}-aura-edges)`} />
               </mask>
             </defs>
             {/* Two masks: a soft round falloff, and a fade towards the top and bottom of the drawing */}
