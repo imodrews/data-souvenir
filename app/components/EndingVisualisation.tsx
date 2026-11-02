@@ -443,12 +443,6 @@ function auraDetailsSprite(artist: string, centerX: number, centerY: number, kee
   const box: Box = [Math.floor(centerX - AURA_REACH), Math.floor(centerY - AURA_REACH), Math.ceil(centerX + AURA_REACH), Math.ceil(centerY + AURA_REACH)];
   return { box, svg: svgDocument(box, AURA_DEFS + auraFalloff(centerX, centerY), `<g mask="url(#fade)"><g fill="none" stroke-linecap="round">${lines}</g>${fuzzyDots}</g>`) };
 }
-/* ---------- Artist list under the map ---------- */
-const LIST_DOT = 20; // size of the dot in the list
-const LIST_RAIL = 44; // width of the column that holds the dots and the line joining them
-const LIST_HAZE = 88; // size of the grainy haze behind each dot in the list
-const LIST_HAZE_OPACITY = 0.75;
-
 /* ---------- Open collection: name on top, photos in the middle, title and description below ---------- */
 const NAME_SIZE = 30;
 const BIO_LINE = 20;
@@ -665,12 +659,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
   // One row per artist for the list under the map, in the order they were first visited.
   const artistRows = useMemo(() => {
-    const rows = new Map<string, { artist: string; orders: string[]; scanIds: string[]; rings: readonly string[]; path: string }>();
+    const rows = new Map<string, { artist: string; orders: string[] }>();
     for (const dot of dots) {
-      const tones = bluesFor(hashString(dot.artist));
-      const row = rows.get(dot.artist) ?? { artist: dot.artist, orders: [], scanIds: [], rings: tones.rings, path: tones.path };
+      const row = rows.get(dot.artist) ?? { artist: dot.artist, orders: [] };
       row.orders.push(dot.order);
-      row.scanIds.push(dot.scanId);
       rows.set(dot.artist, row);
     }
     return [...rows.values()];
@@ -875,7 +867,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         <style>{`
           .${uid}-focus:focus { outline: none; }
           .${uid}-focus:focus-visible .${uid}-ring { stroke: ${ACCENT}; stroke-width: 3; }
-          .${uid}-layer, .${uid}-fade { animation: ${uid}-in 0.5s ease-out both; }
+          .${uid}-layer { animation: ${uid}-in 0.5s ease-out both; }
           @keyframes ${uid}-in { from { opacity: 0; } }
         `}</style>
         {/* Isometric floor plan of the space, always visible: a soft glow under thin, fading, hand-drawn lines */}
@@ -1122,21 +1114,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
 
           {/* Artists, straight on the page: the same dot as on the map, then the name. Tap one to light up its dot. */}
           <p style={{ ...MONO, margin: "14px 2px 4px", fontSize: 11, letterSpacing: "0.03em", color: INK_MUTED }}>ARTISTS · TAP ONE TO FIND THEM IN THE SPACE</p>
-          {/* The same glowing line as the path joins the dots, in the order they were visited; each dot sits in its own haze.
-              One stacking layer for the whole list, so every haze stays under every line, dot and name. */}
-          <ul role="list" aria-label="Artists you met" style={{ listStyle: "none", margin: 0, padding: 0, position: "relative", isolation: "isolate" }}>
-            {artistRows.map(({ artist, orders, scanIds, rings, path }, rowIndex) => {
+          {/* Artists, straight on the page: the number from the map and the name. Tap one to light up its dot. */}
+          <ul role="list" aria-label="Artists you met" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {artistRows.map(({ artist, orders }, rowIndex) => {
               const on = focusArtist === artist;
-              const previous = artistRows[rowIndex - 1];
-              const next = artistRows[rowIndex + 1];
-              const mix = (other: string) => d3.interpolateRgb(path, other)(0.5);
-              const haze = bitmaps[`haze-${scanIds[0]}`];
-              // Half a line above the dot (from the previous artist) and half below (towards the next), as a thin core with a soft glow.
-              const segments = [
-                previous && { top: 0, bottom: "50%", from: mix(previous.path), to: path },
-                next && { top: "50%", bottom: 0, from: path, to: mix(next.path) },
-              ].filter(Boolean) as { top: number | string; bottom: number | string; from: string; to: string }[];
-              return <li key={artist}>
+              return <li key={artist} style={{ borderTop: rowIndex === 0 ? "none" : "1px solid rgba(239,239,232,0.10)" }}>
                 <button type="button" aria-pressed={on}
                   onClick={() => {
                     closeCollection();
@@ -1145,35 +1127,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                     if (!on) svgRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
                   }}
                   style={{
-                    width: "100%", minHeight: 52, padding: 0, display: "flex", alignItems: "stretch",
+                    width: "100%", minHeight: 48, padding: "8px 2px", display: "flex", alignItems: "center", gap: 14,
                     border: 0, background: "transparent", cursor: "pointer", textAlign: "left", color: INK, fontFamily: BODY_FONT,
                   }}>
-                  <span aria-hidden="true" style={{ flexShrink: 0, width: LIST_RAIL, position: "relative" }}>
-                    {haze && <img className={`${uid}-fade`} src={haze} alt="" style={{
-                      position: "absolute", left: "50%", top: "50%", width: LIST_HAZE, height: LIST_HAZE, transform: "translate(-50%, -50%)",
-                      opacity: focusArtist && !on ? LIST_HAZE_OPACITY * 0.4 : LIST_HAZE_OPACITY, transition: "opacity 0.25s ease", pointerEvents: "none", zIndex: 0,
-                    }} />}
-                    {segments.map((segment, index) => <span key={index}>
-                      <span style={{ position: "absolute", left: "50%", top: segment.top, bottom: segment.bottom, width: 6, transform: "translateX(-50%)",
-                        background: `linear-gradient(${segment.from}, ${segment.to})`, filter: "blur(3px)", opacity: 0.45, zIndex: 1 }} />
-                      <span style={{ position: "absolute", left: "50%", top: segment.top, bottom: segment.bottom, width: 1.5, transform: "translateX(-50%)",
-                        background: `linear-gradient(${segment.from}, ${segment.to})`, opacity: 0.9, zIndex: 1 }} />
-                    </span>)}
-                    <span style={{
-                      position: "absolute", left: "50%", top: "50%", width: LIST_DOT, height: LIST_DOT, transform: "translate(-50%, -50%)", zIndex: 2,
-                      borderRadius: "50%",
-                      background: `radial-gradient(circle, ${rings[3]} 0 33%, ${rings[2]}F2 33% 54%, ${rings[1]}B3 54% 76%, ${rings[0]}4D 76%)`,
-                      boxShadow: on ? `0 0 0 2px ${GROUND}, 0 0 0 3.5px #FFFFFF, 0 0 12px 4px ${rings[1]}` : `0 0 8px 1px ${rings[1]}66`,
-                      transition: "box-shadow 0.25s ease",
-                    }} />
-                  </span>
-                  <span style={{
-                    flex: 1, position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 12, padding: "8px 2px 8px 6px",
-                    borderTop: rowIndex === 0 ? "none" : "1px solid rgba(239,239,232,0.10)",
-                  }}>
-                    <span style={{ ...MONO, flexShrink: 0, minWidth: 22, fontSize: 12, color: INK_MUTED }}>{orders.join(" · ")}</span>
-                    <span style={{ ...DISPLAY, fontSize: 16, color: on ? ACCENT_TEXT : INK, transition: "color 0.25s ease" }}>{artist}</span>
-                  </span>
+                  <span style={{ ...MONO, flexShrink: 0, minWidth: 22, fontSize: 12, color: on ? ACCENT_TEXT : INK_MUTED, transition: "color 0.25s ease" }}>{orders.join(" · ")}</span>
+                  <span style={{ ...DISPLAY, fontSize: 16, color: on ? ACCENT_TEXT : INK, transition: "color 0.25s ease" }}>{artist}</span>
                 </button>
               </li>;
             })}
