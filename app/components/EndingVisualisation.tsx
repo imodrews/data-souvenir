@@ -100,9 +100,6 @@ const POOL_RADIUS = 62; // hazy glow on the floor under each artist
 // How solid the glow is (0-1). Higher is brighter and bluer: a thin, see-through glow mixes with the dark ground and reads purple.
 const HAZE_STRENGTH = 1;
 const HAZE_BLUR = 18; // softness of the glow's edge; lower keeps more of it bright blue
-const HAZE_FILTER_MARGIN = Math.ceil(HAZE_BLUR * 3.5);
-const AURA_BLUR = 44;
-const AURA_FILTER_MARGIN = Math.ceil(AURA_BLUR * 3.5);
 const CARD_WIDTH = 148;
 const CARD_HEIGHT = 184;
 const PHOTO_GAP = 12;
@@ -171,10 +168,6 @@ function getArtistArtworkFiles(artist: string) {
 function getArtworkTitle(path: string) {
   const filename = decodeURIComponent(path.split("/").at(-1) ?? "");
   return filename.replace(/^\d+[a-z]_[^_]+_/, "").replace(/\.[^.]+$/, "").replace("Good Lucj", "Good Luck");
-}
-
-function getArtworkThumbnail(path: string) {
-  return path.replace(/\.(?:jpe?g|png)$/i, ".thumb.jpg");
 }
 
 function truncate(text: string, maxCharacters: number) {
@@ -263,6 +256,214 @@ function bluesFor(seed: number) {
   };
 }
 
+/* ---------- Filtered layers, drawn once as bitmaps ---------- */
+// SVG filters (grain, blur, wobble) are recalculated by the browser whenever anything near them changes, which on a
+// phone means on every frame of an animation. So each filtered layer is drawn once into a plain bitmap and shown as an
+// <image>: it looks the same, but the phone only has to copy pixels. Change the filters below to change the look.
+
+const svgDocument = (box: Box, defs: string, body: string) => {
+  const [x0, y0, x1, y1] = box;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${x1 - x0}" height="${y1 - y0}" viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}"><defs>${defs}</defs>${body}</svg>`;
+};
+const boxAround = (x0: number, y0: number, x1: number, y1: number, pad: number): Box =>
+  [Math.floor(x0 - pad), Math.floor(y0 - pad), Math.ceil(x1 + pad), Math.ceil(y1 + pad)];
+
+// Smooth value noise (0-1), so the outline can wobble like it was drawn by hand without an expensive SVG filter.
+function smoothNoise(seed: number) {
+  const size = 64;
+  const random = seededRandom(seed);
+  const grid = Float32Array.from({ length: size * size }, () => random());
+  const at = (i: number, j: number) => grid[(((j % size) + size) % size) * size + (((i % size) + size) % size)];
+  const ease = (t: number) => t * t * (3 - 2 * t);
+  return (x: number, y: number) => {
+    const i = Math.floor(x);
+    const j = Math.floor(y);
+    const fx = ease(x - i);
+    const fy = ease(y - j);
+    const top = at(i, j) + (at(i + 1, j) - at(i, j)) * fx;
+    const bottom = at(i, j + 1) + (at(i + 1, j + 1) - at(i, j + 1)) * fx;
+    return top + (bottom - top) * fy;
+  };
+}
+
+// The outline's hand-drawn wobble: each point is nudged by up to ±WOBBLE/2 following low-frequency noise.
+const WOBBLE = 6;
+const WOBBLE_FREQUENCY = 0.018;
+const wobbleX = smoothNoise(8);
+const wobbleY = smoothNoise(9);
+function wobbleLine(points: Point[], closed: boolean) {
+  const all = closed ? [...points, points[0]] : points;
+  const out: Point[] = [];
+  all.forEach((point, index) => {
+    if (index === 0) { out.push(point); return; }
+    const previous = all[index - 1];
+    const steps = Math.max(1, Math.ceil(Math.hypot(point.x - previous.x, point.y - previous.y) / 6));
+    for (let step = 1; step <= steps; step += 1) {
+      out.push({ x: previous.x + ((point.x - previous.x) * step) / steps, y: previous.y + ((point.y - previous.y) * step) / steps });
+    }
+  });
+  const nudged = out.map(({ x, y }) => ({
+    x: x + WOBBLE * (wobbleX(x * WOBBLE_FREQUENCY, y * WOBBLE_FREQUENCY) - 0.5),
+    y: y + WOBBLE * (wobbleY(x * WOBBLE_FREQUENCY, y * WOBBLE_FREQUENCY) - 0.5),
+  }));
+  return `M${nudged.map(({ x, y }) => `${x.toFixed(1)} ${y.toFixed(1)}`).join("L")}${closed ? "Z" : ""}`;
+}
+const parsePoints = (list: string) => list.trim().split(/\s+/).map((pair) => {
+  const [x, y] = pair.split(",").map(Number);
+  return { x, y };
+});
+const parseLines = (d: string) => [...d.matchAll(/M\s*([-\d.]+)[ ,]([-\d.]+)\s*L\s*([-\d.]+)[ ,]([-\d.]+)/g)]
+  .map((match) => [{ x: +match[1], y: +match[2] }, { x: +match[3], y: +match[4] }]);
+// The outline in drawing order: the mezzanine slab is filled so it hides what is behind it.
+const PLAN_OUTLINE = [
+  { d: wobbleLine(parsePoints(PLAN.floor), true) },
+  ...parseLines(PLAN.columns).map((points) => ({ d: wobbleLine(points, false) })),
+  ...PLAN.stringers.map((stringer) => ({ d: wobbleLine(parsePoints(stringer), false) })),
+  ...parseLines(PLAN.treads).map((points) => ({ d: wobbleLine(points, false) })),
+  { d: wobbleLine(parsePoints(PLAN.slabTop), true), filled: true },
+  { d: wobbleLine(parsePoints(PLAN.slabFront), true) },
+  { d: wobbleLine(parsePoints(PLAN.slabSide), true) },
+];
+// The faint glow under the outline (a blur, so it is drawn once as a bitmap).
+const PLAN_FADE = { x1: 250 * PLAN_SCALE, y1: PLAN_TOP + 10 * PLAN_SCALE, x2: 120 * PLAN_SCALE, y2: PLAN_TOP + 370 * PLAN_SCALE };
+const PLAN_GLOW_SVG = svgDocument([0, 0, WIDTH, CANVAS_HEIGHT],
+  `<linearGradient id="fade" gradientUnits="userSpaceOnUse" x1="${PLAN_FADE.x1}" y1="${PLAN_FADE.y1}" x2="${PLAN_FADE.x2}" y2="${PLAN_FADE.y2}"><stop offset="0" stop-color="${INK}" stop-opacity="0.55"/><stop offset="1" stop-color="${INK}" stop-opacity="0.12"/></linearGradient>`
+  + `<filter id="glow" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="4"/></filter>`,
+  `<g fill="none" stroke="url(#fade)" stroke-linejoin="round" stroke-linecap="round" stroke-width="6" opacity="0.35" filter="url(#glow)"><polygon points="${PLAN.floor}"/><polygon points="${PLAN.slabTop}"/><path d="${PLAN.columns}"/></g>`);
+
+// The glow under the path: warped, blurred strokes that blend from one artist's colour to the next.
+// Drawn for the whole path, and for each stretch on its own (box), so the replay can fade each stretch in as it is drawn.
+type GlowSegment = { d: string; index: number; from: string | null; to: string; x1: number; y1: number; x2: number; y2: number };
+const GLOW_PAD = 44; // room around a stretch for its blur and wobble
+const segmentBox = (segment: GlowSegment) => boxAround(
+  Math.min(segment.x1, segment.x2), Math.min(segment.y1, segment.y2), Math.max(segment.x1, segment.x2), Math.max(segment.y1, segment.y2), GLOW_PAD);
+function pathGlowSvg(segments: GlowSegment[], colorFor: (scanId: string | null) => string, box: Box = [0, 0, WIDTH, CANVAS_HEIGHT]) {
+  const [bx, by, bx1, by1] = box;
+  const region = `x="${bx}" y="${by}" width="${bx1 - bx}" height="${by1 - by}"`;
+  const gradients = segments.map((segment) => `<linearGradient id="g${segment.index}" gradientUnits="userSpaceOnUse" x1="${segment.x1}" y1="${segment.y1}" x2="${segment.x2}" y2="${segment.y2}"><stop offset="0" stop-color="${colorFor(segment.from)}"/><stop offset="1" stop-color="${colorFor(segment.to)}"/></linearGradient>`).join("");
+  const strokes = (width: number) => segments.map((segment) => `<path d="${segment.d}" fill="none" stroke="url(#g${segment.index})" stroke-width="${width}" stroke-linecap="round"/>`).join("");
+  return svgDocument(box, gradients
+    + `<filter id="halo" ${region} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic"/><feGaussianBlur in="organic" stdDeviation="9"/></filter>`
+    + `<filter id="soft" ${region} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse"><feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain"/><feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic"/><feGaussianBlur in="organic" stdDeviation="3"/></filter>`,
+    `<g filter="url(#halo)" opacity="0.45">${strokes(11)}</g><g filter="url(#soft)" opacity="0.35">${strokes(4)}</g>`);
+}
+
+// The haze behind one dot: a wide soft glow with fine film grain, no hard patches.
+const HAZE_FILTER = `<filter id="haze" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="${HAZE_BLUR}" result="blurred"/><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="noise"/><feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0 0 0 0.55" result="grainMask"/><feComposite in="blurred" in2="grainMask" operator="in" result="grainy"/><feTurbulence type="fractalNoise" baseFrequency="1.05" numOctaves="1" seed="3" result="fine"/><feColorMatrix in="fine" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.1" result="specks"/><feComposite in="specks" in2="grainy" operator="in" result="specksInside"/><feMerge><feMergeNode in="grainy"/><feMergeNode in="specksInside"/></feMerge></filter>`;
+function hazeSprite(blobs: { x: number; y: number; r: number; color: string }[]) {
+  const box = boxAround(
+    Math.min(...blobs.map((blob) => blob.x - blob.r)), Math.min(...blobs.map((blob) => blob.y - blob.r)),
+    Math.max(...blobs.map((blob) => blob.x + blob.r)), Math.max(...blobs.map((blob) => blob.y + blob.r)), HAZE_BLUR * 3 + 4);
+  const circles = blobs.map((blob) => `<circle cx="${blob.x}" cy="${blob.y}" r="${blob.r}" fill="${blob.color}"/>`).join("");
+  return { box, svg: svgDocument(box, HAZE_FILTER, `<g filter="url(#haze)">${circles}</g>`) };
+}
+
+// The cloud behind an open collection: heavy blur whose edges break up into grain like a spray-painted print,
+// with a few loose lines and fuzzy dark dots, fading out softly in a circle and towards the top and bottom.
+const AURA_DEFS = `<filter id="aura" x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="44" result="blurred"/><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="7" result="noise"/><feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="noiseAlpha"/><feComposite in="blurred" in2="noiseAlpha" operator="arithmetic" k1="0" k2="1" k3="0.55" k4="-0.27" result="mixed"/><feComponentTransfer in="mixed" result="mask"><feFuncA type="discrete" tableValues="0 0.25 0.55 0.8 0.95"/></feComponentTransfer><feComposite in="blurred" in2="mask" operator="in" result="speckled"/><feTurbulence type="fractalNoise" baseFrequency="1.05" numOctaves="1" seed="3" result="fine"/><feColorMatrix in="fine" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.25" result="specks"/><feComposite in="specks" in2="speckled" operator="in" result="specksInside"/><feMerge><feMergeNode in="speckled"/><feMergeNode in="specksInside"/></feMerge></filter>`
+  + `<filter id="fuzz" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="3.6" result="blurred"/><feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="1" seed="9" result="noise"/><feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="noiseAlpha"/><feComposite in="blurred" in2="noiseAlpha" operator="arithmetic" k1="0" k2="1" k3="0.8" k4="-0.4" result="mixed"/><feComponentTransfer in="mixed" result="mask"><feFuncA type="discrete" tableValues="0 0.5 1"/></feComponentTransfer><feComposite in="blurred" in2="mask" operator="in"/></filter>`;
+const auraFalloff = (centerX: number, centerY: number) => `<radialGradient id="falloff" gradientUnits="userSpaceOnUse" cx="${centerX}" cy="${centerY}" r="${AURA_REACH}"><stop offset="0.35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>`
+  + `<mask id="fade" maskUnits="userSpaceOnUse" x="${centerX - AURA_REACH}" y="${centerY - AURA_REACH}" width="${AURA_REACH * 2}" height="${AURA_REACH * 2}"><rect x="${centerX - AURA_REACH}" y="${centerY - AURA_REACH}" width="${AURA_REACH * 2}" height="${AURA_REACH * 2}" fill="url(#falloff)"/></mask>`;
+// The grainy cloud is the same for every artist, so it is drawn once and placed behind whichever artist is open.
+// It is drawn around (AURA_REACH, AURA_REACH); place its top-left corner at (centre - AURA_REACH).
+const AURA_CLOUD_SVG = svgDocument([0, 0, AURA_REACH * 2, AURA_REACH * 2], AURA_DEFS + auraFalloff(AURA_REACH, AURA_REACH),
+  `<g mask="url(#fade)"><g filter="url(#aura)" opacity="${HAZE_STRENGTH}">${AURA_BLOBS.map(([dx, dy, r], index) => `<circle cx="${AURA_REACH + dx}" cy="${AURA_REACH + dy}" r="${r}" fill="${AURA_COLORS[index % AURA_COLORS.length]}"/>`).join("")}</g></g>`);
+// Each artist's own loose lines and fuzzy dark dots on top of the cloud.
+function auraDetailsSprite(artist: string, centerX: number, centerY: number) {
+  const random = seededRandom(hashString(artist));
+  const around = (reach: number) => [centerX + (random() * 2 - 1) * reach, centerY + (random() * 2 - 1) * reach] as const;
+  const lines = Array.from({ length: AURA_LINES }, (_, index) => {
+    const [x1, y1] = around(AURA_REACH * 0.9);
+    const [c1x, c1y] = around(AURA_REACH);
+    const [c2x, c2y] = around(AURA_REACH);
+    const [x2, y2] = around(AURA_REACH * 0.9);
+    return `<path d="M${x1} ${y1}C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}" stroke="${AURA_LINE_COLORS[index % AURA_LINE_COLORS.length]}" stroke-opacity="0.55" stroke-width="${1 + random() * 0.6}"/>`;
+  }).join("");
+  const fuzzyDots = Array.from({ length: AURA_FUZZY_DOTS }, () => {
+    const [x, y] = around(AURA_REACH * 0.65);
+    return `<circle cx="${x}" cy="${y}" r="${7 + random() * 5}" fill="${GROUND}" opacity="0.85" filter="url(#fuzz)"/>`;
+  }).join("");
+  const box: Box = [Math.floor(centerX - AURA_REACH), Math.floor(centerY - AURA_REACH), Math.ceil(centerX + AURA_REACH), Math.ceil(centerY + AURA_REACH)];
+  return { box, svg: svgDocument(box, AURA_DEFS + auraFalloff(centerX, centerY), `<g mask="url(#fade)"><g fill="none" stroke-linecap="round">${lines}</g>${fuzzyDots}</g>`) };
+}
+// The cloud fades out towards the top of the drawing instead of being cut off by its edge.
+const AURA_TOP_FADE = 110;
+
+// Draws an SVG into a canvas once and hands back a bitmap URL. Cached for the whole visit, so a replay or
+// reopening an artist costs nothing.
+const bitmapCache = new Map<string, Promise<string>>();
+function rasterise(svg: string, scale: number) {
+  const key = `${scale}|${svg}`;
+  let pending = bitmapCache.get(key);
+  if (!pending) {
+    pending = new Promise<string>((resolve, reject) => {
+      const image = new window.Image();
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, image.width);
+        canvas.height = Math.max(1, image.height);
+        const context = canvas.getContext("2d");
+        if (!context) { reject(new Error("Canvas unavailable")); return; }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => (blob ? resolve(URL.createObjectURL(blob)) : reject(new Error("Could not draw layer"))));
+      };
+      image.onerror = reject;
+      // Give the SVG the final pixel size itself, so its filters (and the grain) are drawn at full resolution
+      // rather than drawn small and stretched.
+      const sized = svg.replace(/^<svg([^>]*?) width="([\d.]+)" height="([\d.]+)"/,
+        (_match, attributes, width, height) => `<svg${attributes} width="${Math.round(+width * scale)}" height="${Math.round(+height * scale)}"`);
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
+    });
+    bitmapCache.set(key, pending);
+  }
+  return pending;
+}
+
+// How sharp each baked layer is, relative to the screen. Soft, blurred layers look the same at lower resolution
+// and are much quicker to draw; the grainy haze keeps full resolution so its grain stays fine.
+const LAYER_DETAIL = { planGlow: 0.5, glow: 0.5, haze: 1, aura: 1 } as const;
+type Layer = { svg: string; detail: number };
+
+// Waits for a quiet moment, so drawing layers never holds up the animation for long.
+const idle = () => new Promise<void>((resolve) => {
+  if ("requestIdleCallback" in window) window.requestIdleCallback(() => resolve(), { timeout: 300 });
+  else setTimeout(resolve, 60);
+});
+
+// Draws the given layers one after another, in order, and returns each bitmap URL once it is ready.
+function useBitmaps(layers: Record<string, Layer>, scale: number | null) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (scale === null) return;
+    let cancelled = false;
+    (async () => {
+      for (const [key, layer] of Object.entries(layers)) {
+        const layerScale = Math.max(0.5, Math.round(scale * layer.detail * 100) / 100);
+        const cached = bitmapCache.has(`${layerScale}|${layer.svg}`);
+        if (!cached) await idle();
+        if (cancelled) return;
+        try {
+          const url = await rasterise(layer.svg, layerScale);
+          if (cancelled) return;
+          setUrls((current) => (current[key] === url ? current : { ...current, [key]: url }));
+        } catch {
+          // A layer that fails to draw is simply left out.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [layers, scale]);
+  return urls;
+}
+
+// Soft edge for a disc of radius r, like a Gaussian blur of width sigma: [offset, opacity] stops for a radial gradient
+// drawn on a circle of radius r + 3 sigma. Replaces blur filters on the dots.
+const GAUSS_EDGE = [[-3, 0.9987], [-2, 0.977], [-1, 0.841], [0, 0.5], [1, 0.159], [2, 0.023], [3, 0]] as const;
+function softEdgeStops(r: number, sigma: number) {
+  const outer = r + 3 * sigma;
+  return [[0, 1] as const, ...GAUSS_EDGE.map(([k, opacity]) => [Math.max(0, (r + k * sigma) / outer), opacity] as const)];
+}
+
 type Box = readonly [x0: number, y0: number, x1: number, y1: number];
 type LabelPlacement = { x: number; y: number; anchor: "start" | "middle" | "end" };
 const overlaps = (a: Box, b: Box) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
@@ -313,13 +514,15 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [journeyProgress, setJourneyProgress] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [front, setFront] = useState(0);
+  const [openProgress, setOpenProgress] = useState(0);
   const [expandedArtwork, setExpandedArtwork] = useState<{ path: string; width: number; height: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [themeFilter, setThemeFilter] = useState<Group | null>(null);
   const [keyHidden, setKeyHidden] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
-  const svgRef = useRef<SVGSVGElement | null>(null);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [pixelScale, setPixelScale] = useState<number | null>(null);
   const openTween = useRef<gsap.core.Tween | null>(null);
   const openValue = useRef({ value: 0 });
 
@@ -427,6 +630,67 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     ];
   }, [dots]);
 
+  const blues = useMemo(() => new Map(dots.map((dot) => [dot.scanId, bluesFor(hashString(dot.artist))] as const)), [dots]);
+
+  // Bitmaps are drawn at the resolution the phone actually shows them at.
+  useEffect(() => {
+    const element = svgRef.current;
+    if (!element) return;
+    const measure = () => {
+      const ratio = (element.getBoundingClientRect().width / WIDTH) * (window.devicePixelRatio || 1);
+      setPixelScale(clamp(Math.round(ratio * 100) / 100, 1, 3));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [items.length]);
+
+  // Hazy glow behind each dot: three soft blobs of BLUE and its white tints, drawn once per dot.
+  const hazeSprites = useMemo(() => new Map(dots.map((dot) => {
+    const random = seededRandom(hashString(`${dot.artist}-haze`));
+    const blobs = blues.get(dot.scanId)!.haze.map((color, colorIndex) => {
+      const angle = colorIndex * 2.1 + random();
+      return { x: dot.x + Math.cos(angle) * 12, y: dot.y + Math.sin(angle) * 8, r: (POOL_RADIUS - colorIndex * 9) * (dot.visits > 1 ? 1.15 : 1), color };
+    });
+    return [dot.scanId, hazeSprite(blobs)] as const;
+  })), [dots, blues]);
+
+  // Where each artist's photos open, and the cloud behind them.
+  const fanFor = useMemo(() => new Map(dots.map((dot) => {
+    const count = getArtistArtworkFiles(dot.artist).length;
+    const fanWidth = count * CARD_WIDTH + Math.max(0, count - 1) * PHOTO_GAP;
+    const centerX = clamp(dot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12);
+    const centerY = clamp(
+      dot.y < CANVAS_HEIGHT * 0.45 ? dot.y + 150 : dot.y - 150,
+      CARD_HEIGHT / 2 + 24,
+      CANVAS_HEIGHT - BAR_HEIGHT - 20 - CARD_HEIGHT / 2 - 16,
+    );
+    return [dot.scanId, { centerX, centerY, aura: auraDetailsSprite(dot.artist, centerX, centerY) }] as const;
+  })), [dots]);
+
+  const layers = useMemo(() => {
+    const pathColor = (scanId: string | null) => (scanId ? blues.get(scanId)!.path : INK);
+    // In order of when they are needed: the space, the dots' haze, the path, then each artist's cloud.
+    const result: Record<string, Layer> = { planGlow: { svg: PLAN_GLOW_SVG, detail: LAYER_DETAIL.planGlow } };
+    for (const segment of pathSegments) {
+      result[`glow-${segment.index}`] = { svg: pathGlowSvg([segment], pathColor, segmentBox(segment)), detail: LAYER_DETAIL.glow };
+      const haze = hazeSprites.get(segment.to);
+      if (haze) result[`haze-${segment.to}`] ??= { svg: haze.svg, detail: LAYER_DETAIL.haze };
+    }
+    for (const [scanId, sprite] of hazeSprites) result[`haze-${scanId}`] ??= { svg: sprite.svg, detail: LAYER_DETAIL.haze };
+    result.glow = { svg: pathGlowSvg(pathSegments, pathColor), detail: LAYER_DETAIL.glow };
+    // The shared cloud and the selected artist's details first, then the others in the background, so opening is instant.
+    if (selected || (mode === "final" && stage === "complete")) result.auraCloud = { svg: AURA_CLOUD_SVG, detail: LAYER_DETAIL.aura };
+    if (selected && fanFor.has(selected)) result[`aura-${selected}`] = { svg: fanFor.get(selected)!.aura.svg, detail: LAYER_DETAIL.aura };
+    if (mode === "final" && stage === "complete") {
+      for (const [scanId, fan] of fanFor) result[`aura-${scanId}`] ??= { svg: fan.aura.svg, detail: LAYER_DETAIL.aura };
+    }
+    return result;
+  }, [blues, pathSegments, hazeSprites, fanFor, selected, mode, stage]);
+  const bitmaps = useBitmaps(layers, pixelScale);
+  const pathDrawn = visibleJourneyProgress >= pathSegments.length;
+
   // Replay: draw the path through the building, one encounter at a time.
   useEffect(() => {
     if (mode === "live" || !items.length) return;
@@ -437,34 +701,16 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setSelected(null);
       setExpandedArtwork(null);
       setHovered(null);
+      setOpenProgress(0);
       openValue.current.value = 0;
       openTween.current?.kill();
-      const pathElements = svgRef.current?.querySelectorAll<SVGPathElement>("[data-journey-segment]") ?? [];
-      for (const path of pathElements) path.setAttribute("stroke-dashoffset", "1");
       const values = { journey: 0 };
-      let renderedJourneyProgress = 0;
-      timeline = gsap.timeline({
-        onComplete: () => {
-          setJourneyProgress(encounterCount);
-          setStage("complete");
-        },
-      });
+      timeline = gsap.timeline({ onComplete: () => setStage("complete") });
       timeline.to(values, {
         journey: encounterCount,
         duration: Math.max(1.2, encounterCount * 0.6),
         ease: "none",
-        onUpdate: () => {
-          for (const path of pathElements) {
-            const index = Number(path.dataset.journeySegment);
-            const progress = Math.max(0, Math.min(1, values.journey - index));
-            path.setAttribute("stroke-dashoffset", String(1 - progress));
-          }
-          const completedEncounters = Math.floor(values.journey);
-          if (completedEncounters !== renderedJourneyProgress) {
-            renderedJourneyProgress = completedEncounters;
-            setJourneyProgress(completedEncounters);
-          }
-        },
+        onUpdate: () => setJourneyProgress(values.journey),
       });
       timelineRef.current = timeline;
     });
@@ -486,38 +732,6 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     image.src = path;
   }
 
-  function updateOpenProgress(progress: number) {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const value = clamp(progress, 0, 1);
-
-    const dim = svg.querySelector<SVGRectElement>("[data-open-dim]");
-    dim?.setAttribute("opacity", String(0.82 * value));
-
-    const aura = svg.querySelector<SVGGElement>("[data-open-aura]");
-    if (aura) {
-      const centerX = Number(aura.dataset.centerX);
-      const centerY = Number(aura.dataset.centerY);
-      const bloom = 0.6 + 0.4 * value;
-      aura.setAttribute("opacity", String(value));
-      aura.setAttribute("transform", `translate(${centerX} ${centerY}) scale(${bloom}) translate(${-centerX} ${-centerY})`);
-    }
-
-    for (const card of svg.querySelectorAll<SVGGElement>("[data-open-card]")) {
-      const startX = Number(card.dataset.startX);
-      const startY = Number(card.dataset.startY);
-      const targetX = Number(card.dataset.targetX);
-      const targetY = Number(card.dataset.targetY);
-      const x = d3.interpolateNumber(startX, targetX)(value);
-      const y = d3.interpolateNumber(startY, targetY)(value);
-      card.setAttribute("opacity", String(Math.min(1, value * 1.5)));
-      card.setAttribute("transform", `translate(${x} ${y}) scale(${0.2 + 0.8 * value})`);
-    }
-
-    const info = svg.querySelector<SVGGElement>("[data-open-info]");
-    info?.setAttribute("opacity", String(value));
-  }
-
   function openCollection(scanId: string) {
     if (!interactive) return;
     openTween.current?.kill();
@@ -527,7 +741,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     openValue.current.value = 0;
     openTween.current = gsap.to(openValue.current, {
       value: 1, duration: 0.6, ease: "power3.out",
-      onUpdate: () => updateOpenProgress(openValue.current.value),
+      onUpdate: () => setOpenProgress(openValue.current.value),
     });
   }
 
@@ -537,12 +751,10 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     setExpandedArtwork(null);
     openTween.current = gsap.to(openValue.current, {
       value: 0, duration: 0.4, ease: "power2.in",
-      onUpdate: () => updateOpenProgress(openValue.current.value),
+      onUpdate: () => setOpenProgress(openValue.current.value),
       onComplete: () => setSelected(null),
     });
   }
-
-  if (!items.length) return <p>No artwork scans with positions found for this session.</p>;
 
   /* ---------- Collection fan ---------- */
   const selectedDot = selected ? dots.find((dot) => dot.scanId === selected) ?? null : null;
@@ -550,37 +762,12 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const artistBioLines = selectedDot
     ? wrapDescription(selectedDot.artistDescription?.trim() || "Artist description unavailable.", 48, 4)
     : [];
-  const fanWidth = collection.length * CARD_WIDTH + Math.max(0, collection.length - 1) * PHOTO_GAP;
-  const fanCenterX = selectedDot ? clamp(selectedDot.x, fanWidth / 2 + 12, WIDTH - fanWidth / 2 - 12) : 0;
-  const fanCenterY = selectedDot
-    ? clamp(
-      selectedDot.y < CANVAS_HEIGHT * 0.45 ? selectedDot.y + 150 : selectedDot.y - 150,
-      CARD_HEIGHT / 2 + 24,
-      CANVAS_HEIGHT - BAR_HEIGHT - 20 - CARD_HEIGHT / 2 - 16,
-    )
-    : 0;
+  const selectedFan = selectedDot ? fanFor.get(selectedDot.scanId)! : null;
+  const fanCenterX = selectedFan?.centerX ?? 0;
+  const fanCenterY = selectedFan?.centerY ?? 0;
   const frontPath = collection[Math.min(front, collection.length - 1)] ?? null;
   const barY = CANVAS_HEIGHT - BAR_HEIGHT - 10;
-  const blues = new Map(dots.map((dot) => [dot.scanId, bluesFor(hashString(dot.artist))] as const));
   const mainColor = new Map(dots.map((dot) => [dot.scanId, blues.get(dot.scanId)!.path] as const));
-
-  // Hazy glow behind each dot: three soft blobs of BLUE and its white tints.
-  const pools = dots.flatMap((dot) => {
-    const random = seededRandom(hashString(`${dot.artist}-haze`));
-    const reached = dot.encounterIndexes.some((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1);
-    const faded = themeFilter !== null && themeFilter !== dot.group;
-    return blues.get(dot.scanId)!.haze.map((color, colorIndex) => {
-      const angle = colorIndex * 2.1 + random();
-      return {
-        key: `${dot.scanId}-${colorIndex}`,
-        x: dot.x + Math.cos(angle) * 12,
-        y: dot.y + Math.sin(angle) * 8,
-        r: (POOL_RADIUS - colorIndex * 9) * (dot.visits > 1 ? 1.15 : 1),
-        color,
-        opacity: reached ? (faded ? 0.25 : 1) : 0,
-      };
-    });
-  });
 
   const expandedScale = expandedArtwork
     ? Math.min((WIDTH * 0.84) / expandedArtwork.width, (CANVAS_HEIGHT * 0.7) / expandedArtwork.height)
@@ -590,15 +777,17 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const expandedX = (WIDTH - expandedWidth) / 2;
   const expandedY = Math.max(28, (CANVAS_HEIGHT - expandedHeight - 80) / 2);
 
+  if (!items.length) return <p>No artwork scans with positions found for this session.</p>;
+
   return (
     <div style={{ width: "calc(100% + 24px)", maxWidth: 544, margin: "0 -12px", background: "transparent", color: INK, fontFamily: BODY_FONT }}>
       {mode === "final" && (
         <header style={{ padding: "20px 16px 4px" }}>
-          <p className="ending-visit-meta" style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
+          <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
             YOUR VISIT · {artistCount} {artistCount === 1 ? "ARTIST" : "ARTISTS"} · {encounterCount} {encounterCount === 1 ? "ENCOUNTER" : "ENCOUNTERS"}
           </p>
           {topGroup && (
-            <h2 className="ending-summary" style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
+            <h2 style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
               Most of your encounters were with <span style={{ color: ACCENT_TEXT }}>{THEMES[topGroup].short}</span>.
             </h2>
           )}
@@ -622,97 +811,19 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         <style>{`
           .${uid}-focus:focus { outline: none; }
           .${uid}-focus:focus-visible .${uid}-ring { stroke: ${ACCENT}; stroke-width: 3; }
+          .${uid}-layer { animation: ${uid}-in 0.5s ease-out both; }
+          @keyframes ${uid}-in { from { opacity: 0; } }
         `}</style>
+        {/* Isometric floor plan of the space, always visible: a soft glow under thin, fading, hand-drawn lines */}
         <defs>
-          <filter id={`${uid}-halo`} x="0" y="0" width={WIDTH} height={CANVAS_HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
-            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="8" result="grain" />
-            <feDisplacementMap in="SourceGraphic" in2="grain" scale="8" xChannelSelector="R" yChannelSelector="G" result="organic" />
-            <feGaussianBlur in="organic" stdDeviation="9" />
-          </filter>
-          <filter id={`${uid}-soft`} x="0" y="0" width={WIDTH} height={CANVAS_HEIGHT} filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse">
-            <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="13" result="grain" />
-            <feDisplacementMap in="SourceGraphic" in2="grain" scale="4" xChannelSelector="R" yChannelSelector="G" result="organic" />
-            <feGaussianBlur in="organic" stdDeviation="3" />
-          </filter>
-          {/* Softened outline: lines glow faintly and fade from the back of the space towards the entrance */}
-          <linearGradient id={`${uid}-plan-fade`} gradientUnits="userSpaceOnUse"
-            x1={250 * PLAN_SCALE} y1={PLAN_TOP + 10 * PLAN_SCALE} x2={120 * PLAN_SCALE} y2={PLAN_TOP + 370 * PLAN_SCALE}>
+          <linearGradient id={`${uid}-plan-fade`} gradientUnits="userSpaceOnUse" x1={PLAN_FADE.x1} y1={PLAN_FADE.y1} x2={PLAN_FADE.x2} y2={PLAN_FADE.y2}>
             <stop offset="0" stopColor={INK} stopOpacity={0.55} />
             <stop offset="1" stopColor={INK} stopOpacity={0.12} />
           </linearGradient>
-          <filter id={`${uid}-plan-glow`} x="-5%" y="-5%" width="110%" height="110%">
-            <feGaussianBlur stdDeviation={4} />
-          </filter>
-          {/* Colour cloud: heavy blur, then the edges break up into grain like a spray-painted print */}
-          <filter id={`${uid}-aura`} filterUnits="userSpaceOnUse"
-            x={-AURA_FILTER_MARGIN} y={-AURA_FILTER_MARGIN}
-            width={WIDTH + AURA_FILTER_MARGIN * 2} height={CANVAS_HEIGHT + AURA_FILTER_MARGIN * 2}
-            colorInterpolationFilters="sRGB">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={AURA_BLUR} result="blurred" />
-            <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves={2} seed={7} result="noise" />
-            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="noiseAlpha" />
-            <feComposite in="blurred" in2="noiseAlpha" operator="arithmetic" k1={0} k2={1} k3={0.55} k4={-0.27} result="mixed" />
-            <feComponentTransfer in="mixed" result="mask"><feFuncA type="discrete" tableValues="0 0.25 0.55 0.8 0.95" /></feComponentTransfer>
-            <feComposite in="blurred" in2="mask" operator="in" result="speckled" />
-            <feTurbulence type="fractalNoise" baseFrequency="1.05" numOctaves={1} seed={3} result="fine" />
-            <feColorMatrix in="fine" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.25" result="specks" />
-            <feComposite in="specks" in2="speckled" operator="in" result="specksInside" />
-            <feMerge><feMergeNode in="speckled" /><feMergeNode in="specksInside" /></feMerge>
-          </filter>
-          {/* Haze: a wide soft glow with fine film grain, no hard patches */}
-          <filter id={`${uid}-haze`} filterUnits="userSpaceOnUse"
-            x={-HAZE_FILTER_MARGIN} y={-HAZE_FILTER_MARGIN}
-            width={WIDTH + HAZE_FILTER_MARGIN * 2} height={CANVAS_HEIGHT + HAZE_FILTER_MARGIN * 2}
-            colorInterpolationFilters="sRGB">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={HAZE_BLUR} result="blurred" />
-            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} seed={7} result="noise" />
-            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0 0 0 0.55" result="grainMask" />
-            <feComposite in="blurred" in2="grainMask" operator="in" result="grainy" />
-            <feTurbulence type="fractalNoise" baseFrequency="1.05" numOctaves={1} seed={3} result="fine" />
-            <feColorMatrix in="fine" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 1.1" result="specks" />
-            <feComposite in="specks" in2="grainy" operator="in" result="specksInside" />
-            <feMerge><feMergeNode in="grainy" /><feMergeNode in="specksInside" /></feMerge>
-          </filter>
-          {/* Keeps the touchpoint rings clear but not razor-sharp */}
-          <filter id={`${uid}-ring-soft`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation={0.7} />
-          </filter>
-          <filter id={`${uid}-dot-glow`} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation={8} />
-          </filter>
-          {/* A slight hand-drawn wobble for the outline */}
-          <filter id={`${uid}-wobble`} x="-5%" y="-5%" width="110%" height="110%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves={2} seed={8} result="wave" />
-            <feDisplacementMap in="SourceGraphic" in2="wave" scale={6} xChannelSelector="R" yChannelSelector="G" result="moved" />
-            <feGaussianBlur in="moved" stdDeviation={0.5} />
-          </filter>
-          {/* Fuzzy dots: the artists' dots and the dark dots inside the open-collection cloud */}
-          <filter id={`${uid}-fuzz`} x="-80%" y="-80%" width="260%" height="260%" colorInterpolationFilters="sRGB">
-            <feGaussianBlur in="SourceGraphic" stdDeviation={3.6} result="blurred" />
-            <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves={1} seed={9} result="noise" />
-            <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="noiseAlpha" />
-            <feComposite in="blurred" in2="noiseAlpha" operator="arithmetic" k1={0} k2={1} k3={0.8} k4={-0.4} result="mixed" />
-            <feComponentTransfer in="mixed" result="mask"><feFuncA type="discrete" tableValues="0 0.5 1" /></feComponentTransfer>
-            <feComposite in="blurred" in2="mask" operator="in" />
-          </filter>
         </defs>
-
-        {/* Isometric floor plan of the space, always visible: a soft glow under thin, fading lines */}
-        <g pointerEvents="none" fill="none" stroke={`url(#${uid}-plan-fade)`} strokeLinejoin="round" strokeLinecap="round">
-          <g strokeWidth={6} opacity={0.35} filter={`url(#${uid}-plan-glow)`}>
-            <polygon points={PLAN.floor} />
-            <polygon points={PLAN.slabTop} />
-            <path d={PLAN.columns} />
-          </g>
-          <g strokeWidth={1.5} opacity={0.6} filter={`url(#${uid}-wobble)`}>
-            <polygon points={PLAN.floor} />
-            <path d={PLAN.columns} />
-            {PLAN.stringers.map((stringer, index) => <polyline key={index} points={stringer} />)}
-            <path d={PLAN.treads} />
-            <polygon points={PLAN.slabTop} fill={GROUND} fillOpacity={0.55} />
-            <polygon points={PLAN.slabFront} />
-            <polygon points={PLAN.slabSide} />
-          </g>
+        {bitmaps.planGlow && <image className={`${uid}-layer`} href={bitmaps.planGlow} x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} preserveAspectRatio="none" pointerEvents="none" />}
+        <g pointerEvents="none" fill="none" stroke={`url(#${uid}-plan-fade)`} strokeWidth={1.5} opacity={0.6} strokeLinejoin="round" strokeLinecap="round">
+          {PLAN_OUTLINE.map(({ d, filled }, index) => <path key={index} d={d} fill={filled ? GROUND : "none"} fillOpacity={filled ? 0.55 : undefined} />)}
         </g>
         <g pointerEvents="none" fill={INK} fillOpacity={0.45} fontSize={14} letterSpacing={1.5} style={MONO}>
           <text x={PLAN.upperLabel.x} y={PLAN.upperLabel.y}>LEVEL 2</text>
@@ -724,12 +835,18 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             fontSize={12} letterSpacing={1.5} style={MONO}>ENTRANCE</text>
         </g>
 
-        {/* Hazy blue glow behind each dot */}
-        {visibleJourneyProgress > 0 && (
-          <g pointerEvents="none" filter={`url(#${uid}-haze)`} opacity={HAZE_STRENGTH}>
-            {pools.map((pool) => <circle key={pool.key} cx={pool.x} cy={pool.y} r={pool.r} fill={pool.color} opacity={pool.opacity} />)}
-          </g>
-        )}
+        {/* Hazy blue glow behind each dot (drawn once per dot, see hazeSprite) */}
+        <g pointerEvents="none">
+          {dots.map((dot) => {
+            const url = bitmaps[`haze-${dot.scanId}`];
+            if (!url) return null;
+            const [x0, y0, x1, y1] = hazeSprites.get(dot.scanId)!.box;
+            const reached = dot.encounterIndexes.some((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1);
+            const faded = themeFilter !== null && themeFilter !== dot.group;
+            return <image key={dot.scanId} href={url} x={x0} y={y0} width={x1 - x0} height={y1 - y0} preserveAspectRatio="none"
+              opacity={(reached ? (faded ? 0.25 : 1) : 0) * HAZE_STRENGTH} />;
+          })}
+        </g>
 
         {/* Path: each stretch blends from one artist's colour to the next */}
         <g pointerEvents="none" opacity={themeFilter || selected ? 0.3 : 0.9}>
@@ -742,16 +859,24 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
               </linearGradient>
             ))}
           </defs>
-          <g filter={`url(#${uid}-halo)`} opacity={0.45}>
-            {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={11} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
-          </g>
-          <g filter={`url(#${uid}-soft)`} opacity={0.35}>
-            {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={4} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
-          </g>
-          {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeOpacity={index === 0 ? 0.5 : 0.9} strokeWidth={1.4} strokeLinecap="round"
-            pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
+          {/* Glow under the path, drawn once as images: while the replay runs, each stretch's glow fades in as it is drawn;
+              once the whole path is there, one image of the whole glow replaces them */}
+          {pathDrawn && bitmaps.glow
+            ? <image href={bitmaps.glow} x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} preserveAspectRatio="none" />
+            : pathSegments.map((segment) => {
+              const url = bitmaps[`glow-${segment.index}`];
+              const drawn = Math.max(0, Math.min(1, visibleJourneyProgress - segment.index));
+              if (!url || drawn === 0) return null;
+              const [x0, y0, x1, y1] = segmentBox(segment);
+              return <image key={segment.index} href={url} x={x0} y={y0} width={x1 - x0} height={y1 - y0} preserveAspectRatio="none"
+                opacity={drawn ** 3} />;
+            })}
+          {pathSegments.map(({ d, index }) => {
+            const drawn = Math.max(0, Math.min(1, visibleJourneyProgress - index));
+            // Not drawn yet: hidden, so its round cap does not show as a dot at the start.
+            return <path key={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeOpacity={drawn === 0 ? 0 : index === 0 ? 0.5 : 0.9} strokeWidth={1.4} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - drawn} />;
+          })}
         </g>
 
         {/* Names: number + surname, always visible once the visitor has reached that artist */}
@@ -770,65 +895,33 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </g>
 
         {/* Dims the space while a collection is open; tap it to close */}
-        {selected && <rect data-open-dim="" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0}
+        {selected && <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={GROUND} opacity={0.82 * openProgress}
           onClick={(event) => { event.stopPropagation(); closeCollection(); }} />}
 
-        {/* Blue cloud blooming out of the selected dot, behind the photos */}
-        {selectedDot && (() => {
-          const random = seededRandom(hashString(selectedDot.artist));
-          const around = (reach: number) => [fanCenterX + (random() * 2 - 1) * reach, fanCenterY + (random() * 2 - 1) * reach] as const;
-          const lines = Array.from({ length: AURA_LINES }, (_, index) => {
-            const [x1, y1] = around(AURA_REACH * 0.9);
-            const [c1x, c1y] = around(AURA_REACH);
-            const [c2x, c2y] = around(AURA_REACH);
-            const [x2, y2] = around(AURA_REACH * 0.9);
-            return { d: `M${x1} ${y1}C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`, color: AURA_LINE_COLORS[index % AURA_LINE_COLORS.length], width: 1 + random() * 0.6 };
-          });
-          const fuzzyDots = Array.from({ length: AURA_FUZZY_DOTS }, () => {
-            const [x, y] = around(AURA_REACH * 0.65);
-            return { x, y, r: 7 + random() * 5 };
-          });
-          return <g data-open-aura="" data-center-x={selectedDot.x} data-center-y={selectedDot.y} pointerEvents="none" opacity={0}
-            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(0.6) translate(${-selectedDot.x} ${-selectedDot.y})`}>
-            <defs>
-              <radialGradient id={`${uid}-aura-falloff`} gradientUnits="userSpaceOnUse" cx={fanCenterX} cy={fanCenterY} r={AURA_REACH}>
-                <stop offset="0.35" stopColor="#fff" />
-                <stop offset="1" stopColor="#fff" stopOpacity={0} />
-              </radialGradient>
-              <mask id={`${uid}-aura-fade`} maskUnits="userSpaceOnUse" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT}>
-                <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={`url(#${uid}-aura-falloff)`} />
-              </mask>
-              <linearGradient id={`${uid}-aura-edges`} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={CANVAS_HEIGHT}>
-                <stop offset="0" stopColor="#fff" stopOpacity={0} />
-                <stop offset={110 / CANVAS_HEIGHT} stopColor="#fff" />
-                <stop offset={1 - 60 / CANVAS_HEIGHT} stopColor="#fff" />
-                <stop offset="1" stopColor="#fff" stopOpacity={0} />
-              </linearGradient>
-              <mask id={`${uid}-aura-edge-fade`} maskUnits="userSpaceOnUse" x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT}>
-                <rect x={0} y={0} width={WIDTH} height={CANVAS_HEIGHT} fill={`url(#${uid}-aura-edges)`} />
-              </mask>
-            </defs>
-            {/* Two masks: a soft round falloff, and a fade towards the top and bottom of the drawing */}
-            <g mask={`url(#${uid}-aura-edge-fade)`}>
-              <g mask={`url(#${uid}-aura-fade)`}>
-                <g filter={`url(#${uid}-aura)`} opacity={HAZE_STRENGTH}>
-                  {AURA_BLOBS.map(([dx, dy, r], index) => (
-                    <circle key={index} cx={fanCenterX + dx} cy={fanCenterY + dy} r={r} fill={AURA_COLORS[index % AURA_COLORS.length]} />
-                  ))}
-                </g>
-                <g fill="none" strokeLinecap="round">
-                  {lines.map((line, index) => <path key={index} d={line.d} stroke={line.color} strokeOpacity={0.55} strokeWidth={line.width} />)}
-                </g>
-                {fuzzyDots.map((dot, index) => (
-                  <circle key={index} cx={dot.x} cy={dot.y} r={dot.r} fill={GROUND} opacity={0.85} filter={`url(#${uid}-fuzz)`} />
-                ))}
-              </g>
-            </g>
+        {/* Blue cloud blooming out of the selected dot, behind the photos (see AURA_CLOUD_SVG and auraDetailsSprite) */}
+        {selectedDot && selectedFan && (() => {
+          const details = bitmaps[`aura-${selectedDot.scanId}`];
+          const [x0, y0, x1, y1] = selectedFan.aura.box;
+          const bloom = 0.6 + 0.4 * openProgress;
+          return <g pointerEvents="none" opacity={openProgress}
+            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(${bloom}) translate(${-selectedDot.x} ${-selectedDot.y})`}>
+            {bitmaps.auraCloud && <image href={bitmaps.auraCloud} x={fanCenterX - AURA_REACH} y={fanCenterY - AURA_REACH}
+              width={AURA_REACH * 2} height={AURA_REACH * 2} preserveAspectRatio="none" />}
+            {details && <image href={details} x={x0} y={y0} width={x1 - x0} height={y1 - y0} preserveAspectRatio="none" />}
           </g>;
         })()}
+        {selectedDot && <>
+          <defs>
+            <linearGradient id={`${uid}-aura-top`} x1={0} y1={0} x2={0} y2={1}>
+              <stop offset="0" stopColor={GROUND} />
+              <stop offset="1" stopColor={GROUND} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <rect x={0} y={0} width={WIDTH} height={AURA_TOP_FADE} fill={`url(#${uid}-aura-top)`} opacity={openProgress} pointerEvents="none" />
+        </>}
 
         {/* Dots: one per artwork, a ring for every return visit */}
-        {dots.map((dot) => {
+        {dots.map((dot, dotIndex) => {
           const completedVisits = dot.encounterIndexes.filter((encounterIndex) => visibleJourneyProgress >= encounterIndex + 1).length;
           const active = selected === dot.scanId;
           const lit = active || hovered === dot.scanId || (!selected && themeFilter === dot.group);
@@ -856,13 +949,21 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             }}>
             <title>{`${dot.artist} — ${dot.name}`}</title>
             <circle cx={dot.x} cy={dot.y} r={36} fill="transparent" />
-            <circle cx={dot.x} cy={dot.y} r={radius + 12} fill={tones.rings[1]} opacity={lit ? 0.6 : 0.3} filter={`url(#${uid}-dot-glow)`} />
-            {/* Concentric rings like the touchpoint in the exhibition: pale outside, deep BLUE in the centre */}
-            <g filter={`url(#${uid}-ring-soft)`}>
+            {/* Soft glow and touchpoint rings (pale outside, deep BLUE in the centre), softened with gradients instead of blur filters */}
+            <defs>
+              <radialGradient id={`${uid}-dot-glow-${dotIndex}`}>
+                {softEdgeStops(radius + 12, 8).map(([offset, stopOpacity], index) => <stop key={index} offset={offset} stopColor={tones.rings[1]} stopOpacity={stopOpacity} />)}
+              </radialGradient>
               {TOUCHPOINT_RINGS.map((ring, ringIndex) => (
-                <circle key={ringIndex} cx={dot.x} cy={dot.y} r={radius * ring.size} fill={tones.rings[ringIndex]} opacity={ring.opacity} />
+                <radialGradient key={ringIndex} id={`${uid}-ring-${dotIndex}-${ringIndex}`}>
+                  {softEdgeStops(radius * ring.size, 0.7).map(([offset, stopOpacity], index) => <stop key={index} offset={offset} stopColor={tones.rings[ringIndex]} stopOpacity={stopOpacity} />)}
+                </radialGradient>
               ))}
-            </g>
+            </defs>
+            <circle cx={dot.x} cy={dot.y} r={radius + 12 + 24} fill={`url(#${uid}-dot-glow-${dotIndex})`} opacity={lit ? 0.6 : 0.3} />
+            {TOUCHPOINT_RINGS.map((ring, ringIndex) => (
+              <circle key={ringIndex} cx={dot.x} cy={dot.y} r={radius * ring.size + 2.1} fill={`url(#${uid}-ring-${dotIndex}-${ringIndex})`} opacity={ring.opacity} />
+            ))}
             {/* Highlight when hovered, focused or selected */}
             <circle className={`${uid}-ring`} cx={dot.x} cy={dot.y} r={radius + 7} fill="none" pointerEvents="none"
               stroke={lit ? "#FFFFFF" : "transparent"} strokeOpacity={0.85} strokeWidth={1.6}
@@ -875,12 +976,14 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           const middle = index - (collection.length - 1) / 2;
           const isFront = index === front;
           const targetX = fanCenterX + middle * PHOTO_SPREAD;
+          const x = d3.interpolateNumber(selectedDot.x, targetX)(openProgress);
+          const y = d3.interpolateNumber(selectedDot.y, fanCenterY)(openProgress);
+          const scale = 0.2 + 0.8 * openProgress;
           const title = getArtworkTitle(path);
-          return <g key={path} data-open-card="" data-start-x={selectedDot.x} data-start-y={selectedDot.y} data-target-x={targetX} data-target-y={fanCenterY}
-            role="button" tabIndex={0} className={`${uid}-focus`}
+          return <g key={path} role="button" tabIndex={0} className={`${uid}-focus`}
             aria-label={isFront ? `Enlarge ${title}` : `Select ${title}`}
-            opacity={0}
-            transform={`translate(${selectedDot.x} ${selectedDot.y}) scale(0.2)`}
+            opacity={Math.min(1, openProgress * 1.5)}
+            transform={`translate(${x} ${y}) scale(${scale})`}
             style={{ cursor: isFront ? "zoom-in" : "pointer" }}
             onClick={(event) => { event.stopPropagation(); if (isFront) showArtwork(path); else setFront(index); }}
             onKeyDown={(event) => {
@@ -890,14 +993,14 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
                 if (isFront) showArtwork(path); else setFront(index);
               }
             }}>
-            <image href={getArtworkThumbnail(path)} x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2}
+            <image href={path} x={-CARD_WIDTH / 2} y={-CARD_HEIGHT / 2}
               width={CARD_WIDTH} height={CARD_HEIGHT} preserveAspectRatio="xMidYMid slice"
               style={{ filter: isFront ? "drop-shadow(0 0 14px rgba(255,255,255,0.5))" : "drop-shadow(0 6px 14px rgba(0,0,0,0.35))" }} />
           </g>;
         })}
 
         {/* Info bar for the card in front */}
-        {selectedDot && <g data-open-info="" opacity={0} onClick={(event) => event.stopPropagation()}>
+        {selectedDot && <g opacity={openProgress} onClick={(event) => event.stopPropagation()}>
           <rect x={10} y={barY} width={WIDTH - 20} height={BAR_HEIGHT} rx={8} fill="#141414" fillOpacity={0.9}
             stroke={ACCENT} strokeOpacity={0.6} strokeWidth={1.5} />
           <text x={30} y={barY + 28} fontSize={21} fill={ACCENT_TEXT} style={DISPLAY}>
@@ -945,18 +1048,18 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       {mode === "final" && (
         <div style={{ padding: "4px 16px 20px" }}>
           {!keyHidden && (
-            <div className="ending-legend" style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
-              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: "50%", background: KEY_DOT }} />artist
               </span>
-              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 1, background: KEY_PATH }} />your path
               </span>
-              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", background: KEY_DOT }} />bigger: you came back
               </span>
-              <span aria-hidden="true" className="ending-legend__spacer" style={{ flex: 1 }} />
-              <button type="button" aria-label="Hide key" className="ending-legend__close" onClick={() => setKeyHidden(true)}
+              <span style={{ flex: 1 }} />
+              <button type="button" aria-label="Hide key" onClick={() => setKeyHidden(true)}
                 style={{ width: 44, height: 44, border: 0, background: "transparent", color: INK_MUTED, cursor: "pointer", fontSize: 16 }}>
                 {"×"}
               </button>
@@ -964,7 +1067,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           )}
 
           <div style={{ ...GLASS, borderRadius: 8, padding: 10, marginTop: 6 }}>
-            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES</p>
+            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES · TAP ONE TO SEE IT IN THE SPACE</p>
             <div role="group" aria-label="Themes" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {themeStats.map(({ group, artists, encounters: groupEncounters }) => {
                 const on = themeFilter === group;
