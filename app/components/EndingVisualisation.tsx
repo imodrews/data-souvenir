@@ -312,6 +312,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
   const [themeFilter, setThemeFilter] = useState<Group | null>(null);
   const [keyHidden, setKeyHidden] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
   const openTween = useRef<gsap.core.Tween | null>(null);
   const openValue = useRef({ value: 0 });
@@ -433,13 +434,31 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       setOpenProgress(0);
       openValue.current.value = 0;
       openTween.current?.kill();
+      const pathElements = svgRef.current?.querySelectorAll<SVGPathElement>("[data-journey-segment]") ?? [];
       const values = { journey: 0 };
-      timeline = gsap.timeline({ onComplete: () => setStage("complete") });
+      let renderedJourneyProgress = 0;
+      timeline = gsap.timeline({
+        onComplete: () => {
+          setJourneyProgress(encounterCount);
+          setStage("complete");
+        },
+      });
       timeline.to(values, {
         journey: encounterCount,
         duration: Math.max(1.2, encounterCount * 0.6),
         ease: "none",
-        onUpdate: () => setJourneyProgress(values.journey),
+        onUpdate: () => {
+          for (const path of pathElements) {
+            const index = Number(path.dataset.journeySegment);
+            const progress = Math.max(0, Math.min(1, values.journey - index));
+            path.setAttribute("stroke-dashoffset", String(1 - progress));
+          }
+          const completedEncounters = Math.floor(values.journey);
+          if (completedEncounters !== renderedJourneyProgress) {
+            renderedJourneyProgress = completedEncounters;
+            setJourneyProgress(completedEncounters);
+          }
+        },
       });
       timelineRef.current = timeline;
     });
@@ -554,7 +573,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
         </header>
       )}
 
-      <svg viewBox={`0 0 ${WIDTH} ${CANVAS_HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
+      <svg ref={svgRef} viewBox={`0 0 ${WIDTH} ${CANVAS_HEIGHT}`} width="100%" preserveAspectRatio="xMidYMid meet"
         style={{ display: "block", width: "100%", height: "auto", aspectRatio: `${WIDTH} / ${CANVAS_HEIGHT}`, background: "transparent", overflow: "hidden" }}
         onClick={() => { if (expandedArtwork) setExpandedArtwork(null); else closeCollection(); }}
         onKeyDown={(event) => {
@@ -678,15 +697,15 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
             ))}
           </defs>
           <g filter={`url(#${uid}-halo)`} opacity={0.45}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={11} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+            {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={11} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
           </g>
           <g filter={`url(#${uid}-soft)`} opacity={0.35}>
-            {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={4} strokeLinecap="round"
-              pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+            {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeWidth={4} strokeLinecap="round"
+              pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
           </g>
-          {pathSegments.map(({ d, index }) => <path key={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeOpacity={index === 0 ? 0.5 : 0.9} strokeWidth={1.4} strokeLinecap="round"
-            pathLength={1} strokeDasharray="1" strokeDashoffset={1 - Math.max(0, Math.min(1, visibleJourneyProgress - index))} />)}
+          {pathSegments.map(({ d, index }) => <path key={index} data-journey-segment={index} d={d} fill="none" stroke={`url(#${uid}-segment-${index})`} strokeOpacity={index === 0 ? 0.5 : 0.9} strokeWidth={1.4} strokeLinecap="round"
+            pathLength={1} strokeDasharray="1" strokeDashoffset={mode === "live" ? 0 : 1} />)}
         </g>
 
         {/* Names: number + surname, always visible once the visitor has reached that artist */}
