@@ -590,11 +590,11 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
     <div style={{ width: "calc(100% + 24px)", maxWidth: 544, margin: "0 -12px", background: "transparent", color: INK, fontFamily: BODY_FONT }}>
       {mode === "final" && (
         <header style={{ padding: "20px 16px 4px" }}>
-          <p style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
+          <p className="ending-visit-meta" style={{ ...MONO, margin: 0, fontSize: 12, letterSpacing: "0.03em", color: INK_MUTED }}>
             YOUR VISIT · {artistCount} {artistCount === 1 ? "ARTIST" : "ARTISTS"} · {encounterCount} {encounterCount === 1 ? "ENCOUNTER" : "ENCOUNTERS"}
           </p>
           {topGroup && (
-            <h2 style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
+            <h2 className="ending-summary" style={{ ...DISPLAY, margin: "6px 0 0", fontSize: 24, lineHeight: 1.15 }}>
               Most of your encounters were with <span style={{ color: ACCENT_TEXT }}>{THEMES[topGroup].short}</span>.
             </h2>
           )}
@@ -941,18 +941,18 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
       {mode === "final" && (
         <div style={{ padding: "4px 16px 20px" }}>
           {!keyHidden && (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div className="ending-legend" style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 12, color: "rgba(239,239,232,0.75)", minHeight: 44 }}>
+              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: "50%", background: KEY_DOT }} />artist
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 1, background: KEY_PATH }} />your path
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span className="ending-legend__item" style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 14, height: 14, borderRadius: "50%", background: KEY_DOT }} />bigger: you came back
               </span>
-              <span style={{ flex: 1 }} />
-              <button type="button" aria-label="Hide key" onClick={() => setKeyHidden(true)}
+              <span aria-hidden="true" className="ending-legend__spacer" style={{ flex: 1 }} />
+              <button type="button" aria-label="Hide key" className="ending-legend__close" onClick={() => setKeyHidden(true)}
                 style={{ width: 44, height: 44, border: 0, background: "transparent", color: INK_MUTED, cursor: "pointer", fontSize: 16 }}>
                 {"×"}
               </button>
@@ -960,7 +960,7 @@ export default function EndingVisualisation({ encounters, mode }: JourneyVisuali
           )}
 
           <div style={{ ...GLASS, borderRadius: 8, padding: 10, marginTop: 6 }}>
-            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES · TAP ONE TO SEE IT IN THE SPACE</p>
+            <p style={{ ...MONO, margin: "0 6px 6px", fontSize: 11, color: INK_MUTED }}>THEMES</p>
             <div role="group" aria-label="Themes" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {themeStats.map(({ group, artists, encounters: groupEncounters }) => {
                 const on = themeFilter === group;
