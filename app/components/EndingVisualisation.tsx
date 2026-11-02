@@ -11,9 +11,10 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 // Plan units: the hall is 10 wide (x) and 24 deep (y). The mezzanine covers y 0-8 at the back.
 const PLAN_SCALE = WIDTH / 358;
 const PLAN_TOP = 24;
+const CANVAS_BOTTOM_PADDING = 72;
 const SLAB_BOTTOM = 4.5;
 const SLAB_TOP = 4.9;
-const CANVAS_HEIGHT = Math.round(PLAN_TOP + 372 * PLAN_SCALE);
+const CANVAS_HEIGHT = Math.round(PLAN_TOP + 372 * PLAN_SCALE + CANVAS_BOTTOM_PADDING);
 
 function iso(x: number, y: number, z = 0) {
   return {
